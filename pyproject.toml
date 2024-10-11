@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "project"
+version = "0.1.0"
+description = ""
+authors = ["Alexey Tkachenko <a.tkachenko@innopolis.university>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+ipykernel = "^6.29.5"
+torch = "^2.4.1"
+dvc = "^3.55.2"
+zenml = "^0.67.0"
+streamlit = "^1.39.0"
+torchvision = "^0.19.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
