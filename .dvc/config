@@ -1,2 +1,5 @@
 [core]
     analytics = false
+    remote = kaggle
+['remote "kaggle"']
+    url = https://www.kaggle.com/api/v1/datasets/download/awsaf49/coco-2017-dataset
