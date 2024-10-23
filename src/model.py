@@ -168,6 +168,26 @@ class GAN_Model(nn.Module):
         self.opt_G.step()
 
 
+    def train_model(self, train_dl, epochs, display_every=200):
+        # пока что ток трейн (лосс на трейне тоже не плохо)
+        for itr in range(epochs):
+            loss_meter_dict = create_loss_meters() 
+            i = 0                                  
+            for data in tqdm(train_dl):
+                self.setup_input(data) 
+                self.optimize()
+                update_losses(self, loss_meter_dict, count=data['L'].size(0)) 
+                i += 1
+                if i % display_every == 0:
+                    print(f"\nEpoch {itr+1}/{epochs}")
+                    print(f"Iteration {i}/{len(train_dl)}")
+                    log_results(loss_meter_dict) 
+                    visualize(self, data, save=False) 
+
+    def save_model(self, path="model.pt"):
+        torch.save(self.state_dict(), path)
+
+
 
     
     
