@@ -5,7 +5,7 @@ from torchvision.models.resnet import resnet34
 from fastai.vision.models.unet import DynamicUnet
 import torch.optim as optim
 from tqdm import tqdm
-from utils import *
+from src.utils import *
 
 
 # Class for initializing Generator model

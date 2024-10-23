@@ -1,7 +1,7 @@
 # Здесь будут прописаны функции для преобразования данных
 #from prepare_data import get_data
 
-from custom_datasets.gan_dataset import GAN_Dataset
+from src.custom_datasets.gan_dataset import GAN_Dataset
 
 from torch.utils.data import Dataset, DataLoader
 

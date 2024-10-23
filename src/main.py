@@ -1,7 +1,7 @@
 # Здесь будет прописана основная работа программы
-from prepare_data import get_data
-from transform_data import transform_GAN_data
-from model import GNet, GAN_Model
+from src.prepare_data import get_data
+from src.transform_data import transform_GAN_data
+from src.model import GNet, GAN_Model
 import torch
 
 def run_default_GAN():
