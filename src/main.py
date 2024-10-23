@@ -1,4 +1,5 @@
 # Здесь будет прописана основная работа программы
+import os
 from src.prepare_data import get_data
 from src.transform_data import transform_GAN_data
 from src.model import GNet, GAN_Model
@@ -16,15 +17,16 @@ def run_default_GAN():
 
     model_G.pretrain(train_dl, epochs=5)
 
-    model_G.save_model(path="../models/GAN/model_G.pt")
 
     GAN_model = GAN_Model(model_G.G_net, lr_G=0.0004, lr_D=0.0004, beta1=0.5, beta2=0.999, lamda=100.)
     GAN_model.train_model(train_dl, epochs=5)
 
-    GAN_model.save_model(path="../models/GAN/model_GAN.pt")
 
+    model_G.save_model(path=os.path.join(os.getcwd(), "models/gan_g_net.pt"))
 
+    GAN_model.train_model(train_dl, epochs=5, display_every=50)
 
+    GAN_model.save_model(path=os.path.join(os.getcwd(), "models/gan.pt"))
 
 
 # сюда можно докинуть hydra и юзать как параметр название архитектуры
