@@ -1,0 +1,3 @@
+arch: "CGAN"
+
+models_dir: "src/models/cgan"
