@@ -1,16 +1,18 @@
 import torch
 import torch.nn as nn
-from fastai.vision.all import *
-from torchvision.models.resnet import resnet34
-from fastai.vision.models.unet import DynamicUnet
 import torch.optim as optim
+
 from tqdm import tqdm
-from src.utils import *
+
+from fastai.vision.all import *
+from fastai.vision.models.unet import DynamicUnet
+
+from torchvision.models.resnet import resnet34
+
+from src.arch.cgan.utils import *
 
 
 # Class for initializing Generator model
-
-
 class GNet:
     def __init__(self, device, G_net=None, optimizer="Adam", body="resnet34"):
         self.device = device
@@ -58,11 +60,7 @@ class GNet:
         self.G_net.load_state_dict(torch.load(path), map_location=self.device)
 
 
-# GAN class implementation
-
 # GAN Loss
-
-
 class GANLoss(nn.Module):
     def __init__(self, gan_mode="vanilla", real_label=0.9, fake_label=0.1):
         super().__init__()
@@ -87,8 +85,6 @@ class GANLoss(nn.Module):
 
 
 # Discriminator
-
-
 class Discriminator(nn.Module):
     def __init__(self, input_c, num_filters=64, n_down=3):
         super().__init__()
@@ -119,8 +115,6 @@ class Discriminator(nn.Module):
 
 
 # GAN Model
-
-
 class GAN_Model(nn.Module):
     def __init__(
         self, G_net, lr_G=0.0004, lr_D=0.0004, beta1=0.5, beta2=0.999, lamda=100.0
