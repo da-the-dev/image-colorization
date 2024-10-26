@@ -27,7 +27,7 @@ def runner_cgan(cfg: DictConfig):
         body="resnet34",
     )
     model_G.pretrain(train_dl, epochs=5)
-    model_G.save_model(path=os.path.join(cfg.model.models_dir, "gnet.pt"))
+    model_G.save_model(path=os.path.join(os.getcwd(), cfg.model.models_dir, "gnet.pt"))
 
     GAN_model = cgan.GAN_Model(
         model_G.G_net,

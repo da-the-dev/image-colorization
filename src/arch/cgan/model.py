@@ -11,6 +11,8 @@ from torchvision.models.resnet import resnet34
 
 from src.arch.cgan.utils import *
 
+from torch.utils.tensorboard import SummaryWriter
+
 
 # Class for initializing Generator model
 class GNet:
@@ -35,20 +37,33 @@ class GNet:
         return G_net
 
     def pretrain(self, train_dl, epochs):
-        for itr in range(epochs):
-            loss_meter = AverageMeter()
-            for data in tqdm(train_dl):
-                L, ab = data["L"].to(self.device), data["ab"].to(self.device)
-                preds = self.G_net(L)
-                loss = self.criterion(preds, ab)
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
+        writer = SummaryWriter(comment="cgan_pretrain")
 
-                loss_meter.update(loss.item(), L.size(0))
+        for epoch in range(epochs):
+            losses = []
+            with tqdm(train_dl, unit="batch") as tq:
+                for data in tq:
+                    L, ab = data["L"].to(self.device), data["ab"].to(self.device)
+                    
+                    preds = self.G_net(L)
+                    loss = self.criterion(preds, ab)
+                    
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    self.optimizer.step()
 
-            print(f"Epoch {itr + 1}/{epochs}")
-            print(f"L1 Loss: {loss_meter.avg:.5f}")
+                    tq.set_postfix(loss=loss.item())
+                    
+                    losses.append(loss)
+                
+            average_loss = sum(losses) / len(losses)
+            writer.add_scalar("Loss/pretrain", average_loss, epoch)
+
+            print(f"Epoch {epoch + 1}/{epochs}")
+            print(f"L1 Loss: {average_loss:.2f}")
+            
+        writer.flush()
+        writer.close()
 
     def get_model(self):
         return self.G_net
@@ -178,12 +193,27 @@ class GAN_Model(nn.Module):
 
     def train_model(self, train_dl, epochs, display_every=200):
         # пока что ток трейн (лосс на трейне тоже не плохо)
+
+        writer = SummaryWriter(comment="cgan_train")
         for epoch in range(epochs):
             loss_meter_dict = create_loss_meters()
 
             for i, data in enumerate(tqdm(train_dl)):
                 self.setup_input(data)
                 self.optimize()
+
+                writer.add_scalars(
+                    "Loss/train",
+                    {
+                        "loss_D_fake": self.loss_D_fake,
+                        "loss_D_real": self.loss_D_real,
+                        "loss_D": self.loss_D,
+                        "loss_G_GAN": self.loss_G_GAN,
+                        "loss_G_L1": self.loss_G_L1,
+                        "loss_G": self.loss_G,
+                    },
+                )
+
                 update_losses(self, loss_meter_dict, count=data["L"].size(0))
 
                 if i % display_every == 0:
@@ -191,6 +221,8 @@ class GAN_Model(nn.Module):
                     print(f"Iteration {i}/{len(train_dl)}")
                     log_results(loss_meter_dict)
                     visualize(self, data, save=True)
+        writer.flush()
+        writer.close()
 
     def save_model(self, path="model.pt"):
         torch.save(self.state_dict(), path)
