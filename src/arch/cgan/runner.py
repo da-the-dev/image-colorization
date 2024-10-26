@@ -8,7 +8,7 @@ import src.arch.cgan.model as cgan
 
 
 def runner_cgan(cfg: DictConfig):
-    train_paths, val_paths = get_data(num=10_000)
+    train_paths, val_paths = get_data(num=cfg.model.data_size)
 
     train_dl = transform_GAN_data(
         train_paths,
@@ -26,8 +26,8 @@ def runner_cgan(cfg: DictConfig):
         optimizer="Adam",
         body="resnet34",
     )
-    model_G.pretrain(train_dl, epochs=5)
-    model_G.save_model(path=os.path.join(os.getcwd(), cfg.model.models_dir, "gnet.pt"))
+    model_G.pretrain(train_dl, epochs=cfg.model.pretrain_epochs)
+    model_G.save_model(path=os.path.join(os.getcwd(), cfg.model.model_dir, "gnet.pt"))
 
     GAN_model = cgan.GAN_Model(
         model_G.G_net,
@@ -37,5 +37,7 @@ def runner_cgan(cfg: DictConfig):
         beta2=0.999,
         lamda=100.0,
     )
-    GAN_model.train_model(train_dl, epochs=5)
-    GAN_model.save_model(path=os.path.join(os.getcwd(), "cgan.pt"))
+    GAN_model.train_model(
+        train_dl, colorization_path=cfg.model.image_path, epochs=cfg.model.epochs
+    )
+    GAN_model.save_model(path=os.path.join(os.getcwd(), cfg.model.model_dir, "cgan.pt"))

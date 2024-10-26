@@ -44,24 +44,24 @@ class GNet:
             with tqdm(train_dl, unit="batch") as tq:
                 for data in tq:
                     L, ab = data["L"].to(self.device), data["ab"].to(self.device)
-                    
+
                     preds = self.G_net(L)
                     loss = self.criterion(preds, ab)
-                    
+
                     self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
 
                     tq.set_postfix(loss=loss.item())
-                    
+
                     losses.append(loss)
-                
-            average_loss = sum(losses) / len(losses)
+
+            average_loss = (sum(losses) / len(losses)).item()
             writer.add_scalar("Loss/pretrain", average_loss, epoch)
 
             print(f"Epoch {epoch + 1}/{epochs}")
             print(f"L1 Loss: {average_loss:.2f}")
-            
+
         writer.flush()
         writer.close()
 
@@ -191,36 +191,32 @@ class GAN_Model(nn.Module):
         self.backward_G()
         self.opt_G.step()
 
-    def train_model(self, train_dl, epochs, display_every=200):
-        # пока что ток трейн (лосс на трейне тоже не плохо)
-
+    def train_model(self, train_dl, epochs, colorization_path=""):
         writer = SummaryWriter(comment="cgan_train")
         for epoch in range(epochs):
             loss_meter_dict = create_loss_meters()
 
-            for i, data in enumerate(tqdm(train_dl)):
-                self.setup_input(data)
-                self.optimize()
+            with tqdm(train_dl, unit="batch") as tq:
+                for i, data in enumerate(tqdm(train_dl)):
+                    self.setup_input(data)
+                    self.optimize()
+
+                    update_losses(self, loss_meter_dict, count=data["L"].size(0))
+
+                visualize(self, data, path=colorization_path, save=True)
 
                 writer.add_scalars(
                     "Loss/train",
                     {
-                        "loss_D_fake": self.loss_D_fake,
-                        "loss_D_real": self.loss_D_real,
-                        "loss_D": self.loss_D,
-                        "loss_G_GAN": self.loss_G_GAN,
-                        "loss_G_L1": self.loss_G_L1,
-                        "loss_G": self.loss_G,
+                        "loss_D_fake": self.loss_D_fake.item(),
+                        "loss_D_real": self.loss_D_real.item(),
+                        "loss_D": self.loss_D.item(),
+                        "loss_G_GAN": self.loss_G_GAN.item(),
+                        "loss_G_L1": self.loss_G_L1.item(),
+                        "loss_G": self.loss_G.item(),
                     },
+                    epoch,
                 )
-
-                update_losses(self, loss_meter_dict, count=data["L"].size(0))
-
-                if i % display_every == 0:
-                    print(f"\nEpoch {epoch+1}/{epochs}")
-                    print(f"Iteration {i}/{len(train_dl)}")
-                    log_results(loss_meter_dict)
-                    visualize(self, data, save=True)
         writer.flush()
         writer.close()
 
