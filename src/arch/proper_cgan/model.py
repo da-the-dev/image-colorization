@@ -64,6 +64,39 @@ class Discriminator(nn.Module):
         return self.model(x)
 
 
+class Generator(pl.LightningModule):
+    def __init__(self, device, lr=0.0004):
+        super().__init__()
+        self.save_hyperparameters()
+
+        self.G_net = self.build_G_net(n_input=1, n_output=2, size=256)
+        self.criterion = nn.L1Loss()
+
+    def build_G_net(self, n_input=1, n_output=2, size=256):
+        body_model = resnet34()
+        backbone = create_body(body_model, pretrained=True, n_in=n_input, cut=-2)
+        G_net = DynamicUnet(backbone, n_output, (size, size)).to(self.device)
+        return G_net
+
+    def training_step(self, batch):
+        L, ab = batch["L"].to(self.device), batch["ab"].to(self.device)
+
+        preds = self.G_net(L)
+        loss = self.criterion(preds, ab)
+
+        self.log("loss_pretrain_L1", loss, prog_bar=True)
+
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = optim.Adam(
+            self.G_net.parameters(),
+            lr=self.hparams.lr,
+        )
+
+        return optimizer
+
+
 class ColorizationGAN(pl.LightningModule):
     def __init__(
         self, G_net=None, lr_G=0.0004, lr_D=0.0004, beta1=0.5, beta2=0.999, lamda=100.0
@@ -127,34 +160,3 @@ class ColorizationGAN(pl.LightningModule):
             betas=(self.hparams.beta1, self.hparams.beta2),
         )
         return [opt_D, opt_G]
-
-
-class Generator(pl.LightningModule):
-    def __init__(self, device, lr=0.0004):
-        self.device = device
-        self.G_net = self.build_G_net(n_input=1, n_output=2, size=256)
-        self.criterion = nn.L1Loss()
-
-    def build_G_net(self, n_input=1, n_output=2, size=256):
-        body_model = resnet34()
-        backbone = create_body(body_model, pretrained=True, n_in=n_input, cut=-2)
-        G_net = DynamicUnet(backbone, n_output, (size, size)).to(self.device)
-        return G_net
-
-    def training_step(self, batch):
-        L, ab = batch["L"].to(self.device), batch["ab"].to(self.device)
-
-        preds = self.G_net(L)
-        loss = self.criterion(preds, ab)
-
-        self.log("loss_pretrain_L1", loss, prog_bar=True)
-
-        return loss
-
-    def configure_optimizers(self):
-        optimizer = optim.Adam(
-            self.G_net.parameters(),
-            lr=self.hparams.lr,
-        )
-
-        return optimizer
