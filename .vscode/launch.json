@@ -1,11 +1,17 @@
 {
     "configurations": [
         {
-            "name": "Python Debugger: Module",
+            "name": "Debug main",
             "type": "debugpy",
             "request": "launch",
             "module": "src.main",
             "args": ["--multirun"],
+        },
+        {
+            "name": "Debug train",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.train",
         },
     ]
 }
