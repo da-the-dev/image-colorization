@@ -1,4 +1,2 @@
 defaults:
   - _self_
-
-batch_size: 16

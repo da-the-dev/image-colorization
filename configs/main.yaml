@@ -2,6 +2,10 @@ defaults:
   - _self_
   - model/model
 
+train_path: "data/train2017.parquet"
+split: 0.2
+batch_size: 16
+
 hydra:
   mode: MULTIRUN
   sweeper:
