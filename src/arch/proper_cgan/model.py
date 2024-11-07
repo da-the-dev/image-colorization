@@ -35,24 +35,85 @@ class GANLoss(nn.Module):
 
 
 # Discriminator
-class Discriminator(nn.Module):
-    def __init__(self, input_c, num_filters=64, n_down=3):
-        super().__init__()
-        model = [self.get_layers(input_c, num_filters, norm=False)]
-        model += [
-            self.get_layers(
-                num_filters * 2**i,
-                num_filters * 2 ** (i + 1),
-                s=1 if i == (n_down - 1) else 2,
-            )
-            for i in range(n_down)
-        ]
-        model += [
-            self.get_layers(num_filters * 2**n_down, 1, s=1, norm=False, act=False)
-        ]
-        self.model = nn.Sequential(*model)
+class Discriminator(pl.LightningModule):
+    """The Discriminator. Uses PatchGAN achitecture."""
 
-    def get_layers(self, ni, nf, k=4, s=2, p=1, norm=True, act=True):
+    def __init__(
+        self,
+        lr=0.0004,
+        beta1=0.5,
+        beta2=0.999,
+    ):
+        super().__init__()
+        self.save_hyperparameters()
+        self.configure_model()
+
+    def configure_model(self):
+        self.model = self._build()
+        self.model.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, (nn.ConvTranspose2d, nn.Conv2d)):
+            nn.init.normal_(m.weight, 0.0, 0.02)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+
+    def _build(self, n_input=3, n_filters=64, sublayers=3) -> nn.Sequential:
+        """Build the Discriminator. Uses PatchGAN architecture.
+
+        Args:
+            n_input (int): Number of input channels. Default to 3.
+            n_filters (int): Number of filters to use in sublayers. Defaults to 64.
+            sublayers (int): Number of deeper sublayers. Defaults to 3.
+
+        Returns:
+            nn.Sequential: Model
+        """
+        model = [
+            self._make_sublayer(
+                n_input,
+                n_filters,
+                norm=False,
+            )
+        ]
+        model += [
+            self._make_sublayer(
+                n_filters * 2**i,
+                n_filters * 2 ** (i + 1),
+                s=1 if i == (sublayers - 1) else 2,
+            )
+            for i in range(sublayers)
+        ]
+        model += [
+            self._make_sublayer(
+                n_filters * 2**sublayers,
+                1,
+                s=1,
+                norm=False,
+                act=False,
+            )
+        ]
+        model += [nn.Sigmoid()]  # TODO Experiment and remove if needed
+
+        return nn.Sequential(*model)
+
+    def _make_sublayer(
+        self, ni, nf, k=4, s=2, p=1, norm=True, act=True
+    ) -> nn.Sequential:
+        """Make a sublayer
+
+        Args:
+            ni (int): Number of input channels.
+            nf (int): Number of filters.
+            k (int, optional): Kernel size. Defaults to 4.
+            s (int, optional): Stride. Defaults to 2.
+            p (int, optional): Padding. Defaults to 1.
+            norm (bool, optional): Whether to add a norm layer. Defaults to True.
+            act (bool, optional): Whether to add an activation layer. Defaults to True.
+
+        Returns:
+            nn.Sequential: PatchGAN
+        """
         layers = [nn.Conv2d(ni, nf, k, s, p, bias=not norm)]
         if norm:
             layers += [nn.BatchNorm2d(nf)]
@@ -63,100 +124,147 @@ class Discriminator(nn.Module):
     def forward(self, x):
         return self.model(x)
 
-
-class Generator(pl.LightningModule):
-    def __init__(self, device, lr=0.0004):
-        super().__init__()
-        self.save_hyperparameters()
-
-        self.G_net = self.build_G_net(n_input=1, n_output=2, size=256)
-        self.criterion = nn.L1Loss()
-
-    def build_G_net(self, n_input=1, n_output=2, size=256):
-        body_model = resnet34()
-        backbone = create_body(body_model, pretrained=True, n_in=n_input, cut=-2)
-        G_net = DynamicUnet(backbone, n_output, (size, size)).to(self.device)
-        return G_net
-
-    def training_step(self, batch):
-        L, ab = batch["L"].to(self.device), batch["ab"].to(self.device)
-
-        preds = self.G_net(L)
-        loss = self.criterion(preds, ab)
-
-        self.log("loss_pretrain_L1", loss, prog_bar=True)
-
-        return loss
-
     def configure_optimizers(self):
-        optimizer = optim.Adam(
-            self.G_net.parameters(),
+        return optim.Adam(
+            self.model.parameters(),
             lr=self.hparams.lr,
+            betas=(self.hparams.beta1, self.hparams.beta2),
         )
 
-        return optimizer
 
+# Generator
+class Generator(pl.LightningModule):
+    """Generator model. Uses U-net with Resnet34 at its core."""
 
-class ColorizationGAN(pl.LightningModule):
     def __init__(
-        self, G_net=None, lr_G=0.0004, lr_D=0.0004, beta1=0.5, beta2=0.999, lamda=100.0
+        self,
+        lr=0.0004,
+        beta1=0.5,
+        beta2=0.999,
     ):
         super().__init__()
         self.save_hyperparameters()
+        self.configure_model()
 
-        self.G_net = G_net
-        self.D_net = Discriminator(input_c=3, n_down=3, num_filters=64)
-        self.GANcriterion = GANLoss(gan_mode="vanilla")
+        self.criterion = nn.L1Loss()
+
+    def configure_model(self):
+        self.model = self._build()
+        self.model.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, (nn.ConvTranspose2d, nn.Conv2d)):
+            nn.init.normal_(m.weight, 0.0, 0.02)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+
+    def _build(self, n_input=1, n_output=2, size=256) -> DynamicUnet:
+        """Build the Generator
+
+        Args:
+            n_input (int, optional): Number of input channels. Defaults to 1 for L.
+            n_output (int, optional): Number of output channels. Defaults to 2 for a,b.
+            size (int, optional): Image size. Defaults to 256.
+
+        Returns:
+            DynamicUnet: Model
+        """
+        body_model = resnet34()
+        backbone = create_body(body_model, pretrained=True, n_in=n_input, cut=-2)
+        model = DynamicUnet(backbone, n_output, (size, size)).to(self.device)
+        return model
+
+    def forward(self, X):
+        return self.model(X)
+
+    # def training_step(self, batch):
+    #     L, ab = batch["L"].to(self.device), batch["ab"].to(self.device)
+
+    #     preds = self(L)
+    #     loss = self.criterion(preds, ab)
+
+    #     self.log("loss_pretrain_L1", loss, prog_bar=True)
+
+    #     return loss
+
+    def configure_optimizers(self):
+        return optim.Adam(
+            self.model.parameters(),
+            lr=self.hparams.lr,
+            betas=(self.hparams.beta1, self.hparams.beta2),
+        )
+
+
+class ColorizationGAN(pl.LightningModule):
+    def __init__(self, lamda=100.0):
+        super().__init__()
+        self.save_hyperparameters()
+        self.automatic_optimization = False
+
+        self.G_net = Generator()
+        self.D_net = Discriminator()
+
+        self.GANcriterion = GANLoss()
         self.L1criterion = nn.L1Loss()
 
     def forward(self, L):
         return self.G_net(L)
 
-    def training_step(self, batch, batch_idx, optimizer_idx):
-        L, ab = batch["L"], batch["ab"]
+    def training_step(self, batch):
+        L, ab = batch[:, [0], :, :], batch[:, [1, 2], :, :]
+        
         fake_color = self(L)
 
+        opt_D, opt_G = self.optimizers()
+
         # Train Discriminator
-        if optimizer_idx == 0:
-            fake_image = torch.cat([L, fake_color.detach()], dim=1)
-            fake_preds = self.D_net(fake_image)
-            loss_D_fake = self.GANcriterion(fake_preds, False)
+        opt_D.zero_grad()
 
-            real_image = torch.cat([L, ab], dim=1)
-            real_preds = self.D_net(real_image)
-            loss_D_real = self.GANcriterion(real_preds, True)
+        fake_image = torch.cat([L, fake_color.detach()], dim=1)
+        fake_preds = self.D_net(fake_image)
+        loss_D_fake = self.GANcriterion(fake_preds, False)
 
-            loss_D = (loss_D_fake + loss_D_real) * 0.5
+        real_image = torch.cat([L, ab], dim=1)
+        real_preds = self.D_net(real_image)
+        loss_D_real = self.GANcriterion(real_preds, True)
 
-            self.log("loss_D", loss_D, prog_bar=True)
-            self.log("loss_D_fake", loss_D_fake, prog_bar=True)
-            self.log("loss_D_real", loss_D_real, prog_bar=True)
+        loss_D = (loss_D_fake + loss_D_real) / 2
 
-            return loss_D
+        self.manual_backward(loss_D)
+        opt_D.step()
+
+        self.log_dict(
+            {
+                "loss_D": loss_D,
+                "loss_D_fake": loss_D_fake,
+                "loss_D_real": loss_D_real,
+            },
+            prog_bar=True,
+        )
 
         # Train Generator
-        if optimizer_idx == 1:
-            fake_image = torch.cat([L, fake_color], dim=1)
-            fake_preds = self.D_net(fake_image)
-            loss_G_GAN = self.GANcriterion(fake_preds, True)
-            loss_G_L1 = self.L1criterion(fake_color, ab) * self.hparams.lamda
-            loss_G = loss_G_GAN + loss_G_L1
+        opt_G.zero_grad()
 
-            self.log("loss_G", loss_G, prog_bar=True)
-            self.log("loss_G_GAN", loss_G_GAN, prog_bar=True)
-            self.log("loss_G_L1", loss_G_L1, prog_bar=True)
+        fake_image = torch.cat([L, fake_color], dim=1)
+        fake_preds = self.D_net(fake_image)
+        loss_G_GAN = self.GANcriterion(fake_preds, True)
+        loss_G_L1 = self.L1criterion(fake_color, ab)
 
-            return loss_G
+        loss_G = loss_G_GAN + loss_G_L1 * self.hparams.lamda
+
+        self.log_dict(
+            {
+                "loss_G": loss_G,
+                "loss_G_GAN": loss_G_GAN,
+                "loss_G_L1": loss_G_L1,
+            },
+            prog_bar=True,
+        )
+
+        self.manual_backward(loss_G)
+        opt_G.step()
 
     def configure_optimizers(self):
-        opt_D = optim.Adam(
-            self.D_net.parameters(),
-            lr=self.hparams.lr_D,
-            betas=(self.hparams.beta1, self.hparams.beta2),
-        )
-        opt_G = optim.Adam(
-            self.G_net.parameters(),
-            lr=self.hparams.lr_G,
-            betas=(self.hparams.beta1, self.hparams.beta2),
-        )
+        opt_D = self.D_net.configure_optimizers()
+        opt_G = self.G_net.configure_optimizers()
         return [opt_D, opt_G]
