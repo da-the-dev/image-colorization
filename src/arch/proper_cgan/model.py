@@ -1,5 +1,6 @@
 import lightning as pl
 
+import mlflow
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,10 +10,16 @@ from fastai.vision.models.unet import DynamicUnet
 
 from torchvision.models.resnet import resnet34
 
+from torchvision.utils import make_grid
+
+from src.datasets.cgan_dataset import lab2rgb
+
+import torchvision.transforms as transforms
+
 
 # GAN Loss
 class GANLoss(nn.Module):
-    def __init__(self, gan_mode="vanilla", real_label=0.9, fake_label=0.1):
+    def __init__(self, gan_mode="vanilla", real_label=1.0, fake_label=0.0):
         super().__init__()
         self.register_buffer("real_label", torch.tensor(real_label))
         self.register_buffer("fake_label", torch.tensor(fake_label))
@@ -93,7 +100,7 @@ class Discriminator(pl.LightningModule):
                 act=False,
             )
         ]
-        model += [nn.Sigmoid()]  # TODO Experiment and remove if needed
+        # model += [nn.Sigmoid()]  # TODO Experiment and remove if needed
 
         return nn.Sequential(*model)
 
@@ -174,8 +181,8 @@ class Generator(pl.LightningModule):
         model = DynamicUnet(backbone, n_output, (size, size)).to(self.device)
         return model
 
-    def forward(self, X):
-        return self.model(X)
+    def forward(self, x):
+        return self.model(x)
 
     # def training_step(self, batch):
     #     L, ab = batch["L"].to(self.device), batch["ab"].to(self.device)
@@ -196,7 +203,7 @@ class Generator(pl.LightningModule):
 
 
 class ColorizationGAN(pl.LightningModule):
-    def __init__(self, lamda=100.0):
+    def __init__(self, test_images: torch.Tensor, lamda=100.0):
         super().__init__()
         self.save_hyperparameters()
         self.automatic_optimization = False
@@ -207,12 +214,15 @@ class ColorizationGAN(pl.LightningModule):
         self.GANcriterion = GANLoss()
         self.L1criterion = nn.L1Loss()
 
+        # (BatchSize, L*a*b, H, W)
+        self.test_images = test_images
+
     def forward(self, L):
         return self.G_net(L)
 
     def training_step(self, batch):
         L, ab = batch[:, [0], :, :], batch[:, [1, 2], :, :]
-        
+
         fake_color = self(L)
 
         opt_D, opt_G = self.optimizers()
@@ -268,3 +278,26 @@ class ColorizationGAN(pl.LightningModule):
         opt_D = self.D_net.configure_optimizers()
         opt_G = self.G_net.configure_optimizers()
         return [opt_D, opt_G]
+
+    def on_train_epoch_end(self):
+        self.test_images = self.test_images.to(self.device)
+        L = self.test_images[:, [0], :, :][:4]
+        ab = self.G_net(L)
+
+        imgs = torch.cat((L, ab), dim=1)
+
+        imgs = imgs.cpu().detach().numpy().transpose((0, 2, 3, 1))
+
+        for i, _ in enumerate(imgs):
+            imgs[i] = lab2rgb(imgs[i])
+
+        grid = np.concatenate(
+            [
+                np.concatenate([imgs[0], imgs[1]], axis=1),
+                np.concatenate([imgs[2], imgs[3]], axis=1),
+            ],
+            axis=0,
+        )
+
+        # Log the image to MLflow
+        mlflow.log_image(grid, f"generated_images_epoch_{self.current_epoch}.png")
