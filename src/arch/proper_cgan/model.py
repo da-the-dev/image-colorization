@@ -184,16 +184,6 @@ class Generator(pl.LightningModule):
     def forward(self, x):
         return self.model(x)
 
-    # def training_step(self, batch):
-    #     L, ab = batch["L"].to(self.device), batch["ab"].to(self.device)
-
-    #     preds = self(L)
-    #     loss = self.criterion(preds, ab)
-
-    #     self.log("loss_pretrain_L1", loss, prog_bar=True)
-
-    #     return loss
-
     def configure_optimizers(self):
         return optim.Adam(
             self.model.parameters(),
@@ -299,5 +289,4 @@ class ColorizationGAN(pl.LightningModule):
             axis=0,
         )
 
-        # Log the image to MLflow
         mlflow.log_image(grid, f"generated_images_epoch_{self.current_epoch}.png")
