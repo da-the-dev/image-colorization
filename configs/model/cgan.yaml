@@ -3,8 +3,5 @@ arch: "CGAN"
 model_dir: "models/cgan"
 image_path: "images/cgan"
 
-# pretrain_epochs: 0
-pretrain_epochs: 5
 epochs: 20
-data_size: 10000
-# data_size: 100
+lamda: 0.01
