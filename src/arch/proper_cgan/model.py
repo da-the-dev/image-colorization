@@ -263,7 +263,7 @@ class GAN_Model(nn.Module):
 
     def setup_input(self, data):
         self.L = data[:, [0], :, :].to(self.device)
-        self.ab = data[:, [1, 2]:, :].to(self.device)
+        self.ab = data[:, [1, 2], :, :].to(self.device)
 
     def forward(self):
         self.fake_color = self.G_net(self.L)
@@ -308,7 +308,7 @@ class GAN_Model(nn.Module):
             for data in tqdm(train_dl):
                 self.setup_input(data)
                 self.optimize()
-                update_losses(self, loss_meter_dict, count=data["L"].size(0))
+                update_losses(self, loss_meter_dict, count=data[:, 0, :, :].size(0))
                 i += 1
                 if i % display_every == 0:
                     print(f"\nEpoch {itr+1}/{epochs}")
