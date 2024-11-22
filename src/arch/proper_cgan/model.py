@@ -1,25 +1,188 @@
-import lightning as pl
-
-import mlflow
 import torch
 import torch.nn as nn
-import torch.optim as optim
-
 from fastai.vision.all import *
-from fastai.vision.models.unet import DynamicUnet
-
 from torchvision.models.resnet import resnet34
+from fastai.vision.models.unet import DynamicUnet
+import torch.optim as optim
+from tqdm import tqdm
 
-from torchvision.utils import make_grid
 
-from src.datasets.cgan_dataset import lab2rgb
+from torch import nn
+from skimage.color import lab2rgb
+import torch
+import matplotlib.pyplot as plt
+import numpy as np
+import time
 
-import torchvision.transforms as transforms
 
+class AverageMeter:
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.count, self.avg, self.sum = [0.0] * 3
+
+    def update(self, val, count=1):
+        self.count += count
+        self.sum += count * val
+        self.avg = self.sum / self.count
+
+
+def init_weights(net, init="norm", gain=0.02):
+    def init_func(m):
+        classname = m.__class__.__name__
+        if hasattr(m, "weight") and "Conv" in classname:
+            if init == "norm":
+                nn.init.normal_(m.weight.data, mean=0.0, std=gain)
+            elif init == "xavier":
+                nn.init.xavier_normal_(m.weight.data, gain=gain)
+            elif init == "kaiming":
+                nn.init.kaiming_normal_(m.weight.data, a=0, mode="fan_in")
+
+            if hasattr(m, "bias") and m.bias is not None:
+                nn.init.constant_(m.bias.data, 0.0)
+        elif "BatchNorm2d" in classname:
+            nn.init.normal_(m.weight.data, 1.0, gain)
+            nn.init.constant_(m.bias.data, 0.0)
+
+    net.apply(init_func)
+    print(f"Initializing the model with {init} initialization")
+    return net
+
+
+def init_model(model, device):
+    model = model.to(device)
+    model = init_weights(model)
+    return model
+
+
+# ====================
+
+
+def create_loss_meters():
+    loss_D_fake = AverageMeter()
+    loss_D_real = AverageMeter()
+    loss_D = AverageMeter()
+    loss_G_GAN = AverageMeter()
+    loss_G_L1 = AverageMeter()
+    loss_G = AverageMeter()
+
+    return {
+        "loss_D_fake": loss_D_fake,
+        "loss_D_real": loss_D_real,
+        "loss_D": loss_D,
+        "loss_G_GAN": loss_G_GAN,
+        "loss_G_L1": loss_G_L1,
+        "loss_G": loss_G,
+    }
+
+
+def update_losses(model, loss_meter_dict, count):
+    for loss_name, loss_meter in loss_meter_dict.items():
+        loss = getattr(model, loss_name)
+        loss_meter.update(loss.item(), count=count)
+
+
+def lab_to_rgb(L, ab):
+    L = (L + 1.0) * 50.0
+    ab = ab * 110.0
+    Lab = torch.cat([L, ab], dim=1).permute(0, 2, 3, 1).cpu().numpy()
+    rgb_imgs = []
+    for img in Lab:
+        img_rgb = lab2rgb(img)
+        rgb_imgs.append(img_rgb)
+    return np.stack(rgb_imgs, axis=0)
+
+
+def visualize(model, data, save=True):
+    model.G_net.eval()
+    with torch.no_grad():
+        model.setup_input(data)
+        model.forward()
+    model.G_net.train()
+    fake_color = model.fake_color.detach()
+    real_color = model.ab
+    L = model.L
+    fake_imgs = lab_to_rgb(L, fake_color)
+    real_imgs = lab_to_rgb(L, real_color)
+    fig = plt.figure(figsize=(15, 8))
+    for i in range(5):
+        ax = plt.subplot(3, 5, i + 1)
+        ax.imshow(L[i][0].cpu(), cmap="gray")
+        ax.axis("off")
+        ax = plt.subplot(3, 5, i + 1 + 5)
+        ax.imshow(fake_imgs[i])
+        ax.axis("off")
+        ax = plt.subplot(3, 5, i + 1 + 10)
+        ax.imshow(real_imgs[i])
+        ax.axis("off")
+    plt.show()
+    if save:
+        fig.savefig(f"colorization_{time.time()}.png")
+
+
+def log_results(loss_meter_dict):
+    for loss_name, loss_meter in loss_meter_dict.items():
+        print(f"{loss_name}: {loss_meter.avg:.5f}")
+
+
+# Class for initializing Generator model
+
+
+class GNet:
+    def __init__(self, device, G_net=None, optimizer="Adam", body="resnet34"):
+        self.device = device
+
+        if G_net is None:
+            self.G_net = self.build_G_net(n_input=1, n_output=2, size=256, body=body)
+        else:
+            self.G_net = G_net
+
+        if optimizer == "Adam":
+            self.optimizer = optim.Adam(self.G_net.parameters(), lr=0.0004)
+
+        self.criterion = nn.L1Loss()
+
+    def build_G_net(self, n_input=1, n_output=2, size=256, body="resnet34"):
+        if body == "resnet34":
+            body_model = resnet34()
+        backbone = create_body(body_model, pretrained=True, n_in=n_input, cut=-2)
+        G_net = DynamicUnet(backbone, n_output, (size, size)).to(self.device)
+        return G_net
+
+    def pretrain(self, train_dl, epochs):
+        for itr in range(epochs):
+            loss_meter = AverageMeter()
+            for data in tqdm(train_dl):
+                L, ab = data["L"].to(self.device), data["ab"].to(self.device)
+                preds = self.G_net(L)
+                loss = self.criterion(preds, ab)
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+
+                loss_meter.update(loss.item(), L.size(0))
+
+            print(f"Epoch {itr + 1}/{epochs}")
+            print(f"L1 Loss: {loss_meter.avg:.5f}")
+
+    def get_model(self):
+        return self.G_net
+
+    def save_model(self, path="generator.pt"):
+        torch.save(self.G_net.state_dict(), path)
+
+    def load_model(self, path="generator.pt"):
+        self.G_net.load_state_dict(torch.load(path), map_location=self.device)
+
+
+# GAN class implementation
 
 # GAN Loss
+
+
 class GANLoss(nn.Module):
-    def __init__(self, gan_mode="vanilla", real_label=1.0, fake_label=0.0):
+    def __init__(self, gan_mode="vanilla", real_label=0.9, fake_label=0.1):
         super().__init__()
         self.register_buffer("real_label", torch.tensor(real_label))
         self.register_buffer("fake_label", torch.tensor(fake_label))
@@ -42,85 +205,26 @@ class GANLoss(nn.Module):
 
 
 # Discriminator
-class Discriminator(pl.LightningModule):
-    """The Discriminator. Uses PatchGAN achitecture."""
 
-    def __init__(
-        self,
-        lr=0.0004,
-        beta1=0.5,
-        beta2=0.999,
-    ):
+
+class Discriminator(nn.Module):
+    def __init__(self, input_c, num_filters=64, n_down=3):
         super().__init__()
-        self.save_hyperparameters()
-        self.configure_model()
-
-    def configure_model(self):
-        self.model = self._build()
-        self.model.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, (nn.ConvTranspose2d, nn.Conv2d)):
-            nn.init.normal_(m.weight, 0.0, 0.02)
-            if m.bias is not None:
-                nn.init.zeros_(m.bias)
-
-    def _build(self, n_input=3, n_filters=64, sublayers=3) -> nn.Sequential:
-        """Build the Discriminator. Uses PatchGAN architecture.
-
-        Args:
-            n_input (int): Number of input channels. Default to 3.
-            n_filters (int): Number of filters to use in sublayers. Defaults to 64.
-            sublayers (int): Number of deeper sublayers. Defaults to 3.
-
-        Returns:
-            nn.Sequential: Model
-        """
-        model = [
-            self._make_sublayer(
-                n_input,
-                n_filters,
-                norm=False,
+        model = [self.get_layers(input_c, num_filters, norm=False)]
+        model += [
+            self.get_layers(
+                num_filters * 2**i,
+                num_filters * 2 ** (i + 1),
+                s=1 if i == (n_down - 1) else 2,
             )
+            for i in range(n_down)
         ]
         model += [
-            self._make_sublayer(
-                n_filters * 2**i,
-                n_filters * 2 ** (i + 1),
-                s=1 if i == (sublayers - 1) else 2,
-            )
-            for i in range(sublayers)
+            self.get_layers(num_filters * 2**n_down, 1, s=1, norm=False, act=False)
         ]
-        model += [
-            self._make_sublayer(
-                n_filters * 2**sublayers,
-                1,
-                s=1,
-                norm=False,
-                act=False,
-            )
-        ]
-        # model += [nn.Sigmoid()]  # TODO Experiment and remove if needed
+        self.model = nn.Sequential(*model)
 
-        return nn.Sequential(*model)
-
-    def _make_sublayer(
-        self, ni, nf, k=4, s=2, p=1, norm=True, act=True
-    ) -> nn.Sequential:
-        """Make a sublayer
-
-        Args:
-            ni (int): Number of input channels.
-            nf (int): Number of filters.
-            k (int, optional): Kernel size. Defaults to 4.
-            s (int, optional): Stride. Defaults to 2.
-            p (int, optional): Padding. Defaults to 1.
-            norm (bool, optional): Whether to add a norm layer. Defaults to True.
-            act (bool, optional): Whether to add an activation layer. Defaults to True.
-
-        Returns:
-            nn.Sequential: PatchGAN
-        """
+    def get_layers(self, ni, nf, k=4, s=2, p=1, norm=True, act=True):
         layers = [nn.Conv2d(ni, nf, k, s, p, bias=not norm)]
         if norm:
             layers += [nn.BatchNorm2d(nf)]
@@ -131,167 +235,86 @@ class Discriminator(pl.LightningModule):
     def forward(self, x):
         return self.model(x)
 
-    def configure_optimizers(self):
-        return optim.Adam(
-            self.model.parameters(),
-            lr=self.hparams.lr,
-            betas=(self.hparams.beta1, self.hparams.beta2),
-        )
+
+# GAN Model
 
 
-# Generator
-class Generator(pl.LightningModule):
-    """Generator model. Uses U-net with Resnet34 at its core."""
-
+class GAN_Model(nn.Module):
     def __init__(
-        self,
-        lr=0.0004,
-        beta1=0.5,
-        beta2=0.999,
+        self, G_net, lr_G=0.0004, lr_D=0.0004, beta1=0.5, beta2=0.999, lamda=100.0
     ):
         super().__init__()
-        self.save_hyperparameters()
-        self.configure_model()
 
-        self.criterion = nn.L1Loss()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.lamda = lamda
 
-    def configure_model(self):
-        self.model = self._build()
-        self.model.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, (nn.ConvTranspose2d, nn.Conv2d)):
-            nn.init.normal_(m.weight, 0.0, 0.02)
-            if m.bias is not None:
-                nn.init.zeros_(m.bias)
-
-    def _build(self, n_input=1, n_output=2, size=256) -> DynamicUnet:
-        """Build the Generator
-
-        Args:
-            n_input (int, optional): Number of input channels. Defaults to 1 for L.
-            n_output (int, optional): Number of output channels. Defaults to 2 for a,b.
-            size (int, optional): Image size. Defaults to 256.
-
-        Returns:
-            DynamicUnet: Model
-        """
-        body_model = resnet34()
-        backbone = create_body(body_model, pretrained=True, n_in=n_input, cut=-2)
-        model = DynamicUnet(backbone, n_output, (size, size)).to(self.device)
-        return model
-
-    def forward(self, x):
-        return self.model(x)
-
-    def configure_optimizers(self):
-        return optim.Adam(
-            self.model.parameters(),
-            lr=self.hparams.lr,
-            betas=(self.hparams.beta1, self.hparams.beta2),
+        self.G_net = G_net.to(self.device)
+        self.D_net = init_model(
+            Discriminator(input_c=3, n_down=3, num_filters=64), self.device
         )
-
-
-class ColorizationGAN(pl.LightningModule):
-    def __init__(self, test_images: torch.Tensor, lamda=100.0):
-        super().__init__()
-        self.save_hyperparameters()
-        self.automatic_optimization = False
-
-        self.G_net = Generator()
-        self.D_net = Discriminator()
-
-        self.GANcriterion = GANLoss()
+        self.GANcriterion = GANLoss(gan_mode="vanilla").to(self.device)
         self.L1criterion = nn.L1Loss()
+        self.opt_G = optim.Adam(self.G_net.parameters(), lr=lr_G, betas=(beta1, beta2))
+        self.opt_D = optim.Adam(self.D_net.parameters(), lr=lr_D, betas=(beta1, beta2))
 
-        # (BatchSize, L*a*b, H, W)
-        self.test_images = test_images
+    def set_requires_grad(self, model, requires_grad=True):
+        for p in model.parameters():
+            p.requires_grad = requires_grad
 
-    def forward(self, L):
-        return self.G_net(L)
+    def setup_input(self, data):
+        self.L = data[:, [0], :, :].to(self.device)
+        self.ab = data[:, [1, 2]:, :].to(self.device)
 
-    def training_step(self, batch):
-        L, ab = batch[:, [0], :, :], batch[:, [1, 2], :, :]
+    def forward(self):
+        self.fake_color = self.G_net(self.L)
 
-        fake_color = self(L)
-
-        opt_D, opt_G = self.optimizers()
-
-        # Train Discriminator
-        self.toggle_optimizer(opt_D)
-
-        fake_image = torch.cat([L, fake_color.detach()], dim=1)
-        fake_preds = self.D_net(fake_image)
-        loss_D_fake = self.GANcriterion(fake_preds, False)
-
-        real_image = torch.cat([L, ab], dim=1)
+    def backward_D(self):
+        fake_image = torch.cat([self.L, self.fake_color], dim=1)
+        fake_preds = self.D_net(fake_image.detach())
+        self.loss_D_fake = self.GANcriterion(fake_preds, False)
+        real_image = torch.cat([self.L, self.ab], dim=1)
         real_preds = self.D_net(real_image)
-        loss_D_real = self.GANcriterion(real_preds, True)
+        self.loss_D_real = self.GANcriterion(real_preds, True)
+        self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
+        self.loss_D.backward()
 
-        loss_D = (loss_D_fake + loss_D_real) / 2
-
-        self.manual_backward(loss_D)
-        opt_D.step()
-        opt_D.zero_grad()
-        self.untoggle_optimizer(opt_D)
-
-        self.log_dict(
-            {
-                "loss_D": loss_D,
-                "loss_D_fake": loss_D_fake,
-                "loss_D_real": loss_D_real,
-            },
-            prog_bar=True,
-        )
-        
-        # Train Generator
-        self.toggle_optimizer(opt_G)
-
-        fake_image = torch.cat([L, fake_color], dim=1)
+    def backward_G(self):
+        fake_image = torch.cat([self.L, self.fake_color], dim=1)
         fake_preds = self.D_net(fake_image)
-        loss_G_GAN = self.GANcriterion(fake_preds, True)
-        loss_G_L1 = self.L1criterion(fake_color, ab)
+        self.loss_G_GAN = self.GANcriterion(fake_preds, True)
+        self.loss_G_L1 = self.L1criterion(self.fake_color, self.ab) * self.lamda
+        self.loss_G = self.loss_G_GAN + self.loss_G_L1
+        self.loss_G.backward()
 
-        loss_G = loss_G_GAN + loss_G_L1 * self.hparams.lamda
+    def optimize(self):
+        self.forward()
+        self.D_net.train()
+        self.set_requires_grad(self.D_net, True)
+        self.opt_D.zero_grad()
+        self.backward_D()
+        self.opt_D.step()
 
-        self.log_dict(
-            {
-                "loss_G": loss_G,
-                "loss_G_GAN": loss_G_GAN,
-                "loss_G_L1": loss_G_L1,
-            },
-            prog_bar=True,
-        )
+        self.G_net.train()
+        self.set_requires_grad(self.D_net, False)
+        self.opt_G.zero_grad()
+        self.backward_G()
+        self.opt_G.step()
 
-        self.manual_backward(loss_G)
-        opt_G.step()
-        opt_G.zero_grad()
-        self.untoggle_optimizer(opt_G)
+    def train_model(self, train_dl, epochs, display_every=200):
+        # пока что ток трейн (лосс на трейне тоже не плохо)
+        for itr in range(epochs):
+            loss_meter_dict = create_loss_meters()
+            i = 0
+            for data in tqdm(train_dl):
+                self.setup_input(data)
+                self.optimize()
+                update_losses(self, loss_meter_dict, count=data["L"].size(0))
+                i += 1
+                if i % display_every == 0:
+                    print(f"\nEpoch {itr+1}/{epochs}")
+                    print(f"Iteration {i}/{len(train_dl)}")
+                    log_results(loss_meter_dict)
+                    visualize(self, data, save=False)
 
-
-    def configure_optimizers(self):
-        opt_D = self.D_net.configure_optimizers()
-        opt_G = self.G_net.configure_optimizers()
-        return [opt_D, opt_G]
-
-    def on_train_epoch_end(self):
-        self.test_images = self.test_images.to(self.device)
-        L = self.test_images[:, [0], :, :][:4]
-        ab = self.G_net(L)
-
-        imgs = torch.cat((L, ab), dim=1)
-
-        imgs = imgs.cpu().detach().numpy().transpose((0, 2, 3, 1))
-
-        for i, _ in enumerate(imgs):
-            imgs[i] = lab2rgb(imgs[i])
-
-        grid = np.concatenate(
-            [
-                np.concatenate([imgs[0], imgs[1]], axis=1),
-                np.concatenate([imgs[2], imgs[3]], axis=1),
-            ],
-            axis=0,
-        )
-
-        mlflow.log_image(grid, f"generated_images_epoch_{self.current_epoch}.png")
+    def save_model(self, path="model.pt"):
+        torch.save(self.state_dict(), path)

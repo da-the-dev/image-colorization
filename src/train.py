@@ -3,10 +3,11 @@ import hydra
 from omegaconf import DictConfig
 import mlflow
 import lightning as pl
+import torch
 
 
 from src.datasets.cgan_dataset import GAN_Dataset
-from src.arch.proper_cgan.model import ColorizationGAN
+from src.arch.proper_cgan.model import GAN_Model, GNet
 
 from torch.utils.data import DataLoader
 
@@ -29,20 +30,15 @@ def train(cfg: DictConfig):
         pin_memory=True,
     )
 
-    print("Loading test images...")
-    test_images = next(iter(train_loader))
-    print("Loaded test images!")
 
-    model = ColorizationGAN(test_images, lamda=cfg.model.lamda)
-    trainer = pl.Trainer(max_epochs=cfg.model.epochs)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model_G = GNet(device, optimizer="Adam", body="resnet34")
+    GAN_model = GAN_Model(model_G.G_net, lr_G=0.0004, lr_D=0.0004, beta1=0.5, beta2=0.999, lamda=100.)
 
     print("Starting run...")
 
     with mlflow.start_run() as run:
-        print("Started fit...")
-        trainer.fit(model, train_loader)
-        print("Fitted!")
-
+        GAN_model.train_model(train_loader, epochs=200)
 
 if __name__ == "__main__":
     train()
