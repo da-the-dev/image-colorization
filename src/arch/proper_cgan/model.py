@@ -218,7 +218,7 @@ class ColorizationGAN(pl.LightningModule):
         opt_D, opt_G = self.optimizers()
 
         # Train Discriminator
-        opt_D.zero_grad()
+        self.toggle_optimizer(opt_D)
 
         fake_image = torch.cat([L, fake_color.detach()], dim=1)
         fake_preds = self.D_net(fake_image)
@@ -232,6 +232,8 @@ class ColorizationGAN(pl.LightningModule):
 
         self.manual_backward(loss_D)
         opt_D.step()
+        opt_D.zero_grad()
+        self.untoggle_optimizer(opt_D)
 
         self.log_dict(
             {
@@ -241,9 +243,9 @@ class ColorizationGAN(pl.LightningModule):
             },
             prog_bar=True,
         )
-
+        
         # Train Generator
-        opt_G.zero_grad()
+        self.toggle_optimizer(opt_G)
 
         fake_image = torch.cat([L, fake_color], dim=1)
         fake_preds = self.D_net(fake_image)
@@ -263,6 +265,9 @@ class ColorizationGAN(pl.LightningModule):
 
         self.manual_backward(loss_G)
         opt_G.step()
+        opt_G.zero_grad()
+        self.untoggle_optimizer(opt_G)
+
 
     def configure_optimizers(self):
         opt_D = self.D_net.configure_optimizers()
