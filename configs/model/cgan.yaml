@@ -1,7 +1,4 @@
 arch: "CGAN"
 
-model_dir: "models/cgan"
-image_path: "images/cgan"
-
 pretrain_epochs: 5
 epochs: 5
