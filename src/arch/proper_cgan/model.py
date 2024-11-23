@@ -34,7 +34,7 @@ class Generator(pl.LightningModule):
     def forward(self, x):
         return self.model(x)
 
-    def train_step(self, batch):
+    def training_step(self, batch):
         L = batch[:, [0], :, :].to(self.device)
         ab = batch[:, [1, 2], :, :].to(self.device)
 
