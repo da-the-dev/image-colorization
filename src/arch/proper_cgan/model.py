@@ -17,6 +17,7 @@ class Generator(pl.LightningModule):
         beta1=0.9,
         beta2=0.999,
     ):
+        super().__init__()
         self.save_hyperparameters()
         self.configure_model()
         self.criterion = nn.L1Loss()
@@ -53,6 +54,7 @@ class Generator(pl.LightningModule):
 
 class Discriminator(pl.LightningModule):
     def __init__(self):
+        super().__init__()
         self.configure_model()
 
     def configure_model(self):
