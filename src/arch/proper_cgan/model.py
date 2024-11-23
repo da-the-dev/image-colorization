@@ -1,3 +1,4 @@
+import mlflow
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -7,20 +8,24 @@ from fastai.vision.all import *
 from fastai.vision.models.unet import DynamicUnet
 from torchvision.models.resnet import resnet34
 
+from src.arch.proper_cgan.utils import lab2rgb_denormalize
 from src.arch.proper_cgan.losses import GANLoss
 
 
 class Generator(pl.LightningModule):
     def __init__(
         self,
+        test_images,
         lr=0.0004,
         beta1=0.9,
         beta2=0.999,
     ):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["test_images"])
         self.configure_model()
         self.criterion = nn.L1Loss()
+        self.test_images = test_images[:5]  # only take 5 images
+        self.test_images_cpu = np.stack([lab2rgb_denormalize(img) for img in self.test_images])
 
     def configure_model(self):
         self.model = self._build()
@@ -59,8 +64,54 @@ class Generator(pl.LightningModule):
             (self.hparams.beta1, self.hparams.beta2),
         )
 
+    def on_train_epoch_end(self):
+        # Switch generator to eval mode
+        self.model.eval()
+
+        # LAB, normalized, tensor
+        L = self.test_images[:, [0], :, :].to(self.device)
+        fake_ab = self.model(L)
+
+
+        # TODO Permute here
+        
+        # LAB, normalized, numpy
+        fake_images_cpu_lab = (
+            torch.concat([L, fake_ab], dim=1).detach().cpu().numpy()
+        )
+
+        # rgb, denormalized, numpy
+        fake_images_cpu_rgb = np.stack([lab2rgb_denormalize(img) for img in fake_images_cpu_lab])
+        
+
+        # Draw demo image
+        fig = plt.figure(figsize=(15, 8))
+        for i in range(5):
+            ax = plt.subplot(3, 5, i + 1)
+            ax.imshow(L[i][0].cpu(), cmap="gray")
+            ax.axis("off")
+            ax = plt.subplot(3, 5, i + 1 + 5)
+            ax.imshow(fake_images_cpu_rgb[i])
+            ax.axis("off")
+            ax = plt.subplot(3, 5, i + 1 + 10)
+            ax.imshow(self.test_images_cpu[i])
+            ax.axis("off")
+            
+        # Convert the Matplotlib figure to a PIL Image
+        fig.tight_layout()
+        fig.canvas.draw()  # Draw the canvas
+
+        # Convert to a NumPy array
+        image_array = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+        image_array = image_array.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+
+        mlflow.log_image(image_array, f"generated_images_epoch_{self.current_epoch}.png")
+
+        self.model.train()
+
 
 class Discriminator(pl.LightningModule):
+
     def __init__(self):
         super().__init__()
         self.configure_model()

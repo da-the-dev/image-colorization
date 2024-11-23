@@ -30,7 +30,8 @@ def lab2rgb_denormalize(image: np.ndarray) -> np.ndarray:
     """
     # Denormalize L, a, b to their original range
     lab_image = np.empty_like(image)
-    lab_image[..., 0] = (image[..., 0] + 1.0) * 50.0   # Denormalize L: [-1, 1] -> [0, 100]
-    lab_image[..., 1:] = image[..., 1:] * 128.0        # Denormalize a, b: [-1, 1] -> [-128, 127]
+    lab_image[0, ...] = (image[0, ...] + 1.0) * 50.0   # Denormalize L: [-1, 1] -> [0, 100]
+    lab_image[1:, ...] = image[1:, ...] * 128.0        # Denormalize a, b: [-1, 1] -> [-128, 127]
+    lab_image = lab_image.transpose((1, 2, 0))
     rgb_image = color.lab2rgb(lab_image)  # Convert LAB back to RGB
     return rgb_image

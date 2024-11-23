@@ -28,9 +28,10 @@ def train(cfg: DictConfig):
 
     print("Starting run...")
     with mlflow.start_run() as run:
-        # TODO Test images for visualization
-
-        G_net = Generator()
+        # Take first batch from dataloader for test images
+        test_images = next(iter(train_loader))
+        
+        G_net = Generator(test_images)
         print("Started generator pretrain...")
         pretrainer = pl.Trainer(max_epochs=cfg.model.pretrain_epochs)
         pretrainer.fit(G_net, train_loader)
