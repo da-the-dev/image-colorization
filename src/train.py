@@ -1,16 +1,12 @@
 import os
 import hydra
-from omegaconf import DictConfig
 import mlflow
 import lightning as pl
-import torch
-
-
-from src.datasets.cgan_dataset import GAN_Dataset
-from src.arch.proper_cgan.model import GAN_Model, GNet
-
+from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
+from src.datasets.cgan_dataset import GAN_Dataset
+from src.arch.proper_cgan.model import GAN, Generator
 
 # Enable autologging
 mlflow.pytorch.autolog()
@@ -30,15 +26,20 @@ def train(cfg: DictConfig):
         pin_memory=True,
     )
 
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model_G = GNet(device, optimizer="Adam", body="resnet34")
-    GAN_model = GAN_Model(model_G.G_net, lr_G=0.0004, lr_D=0.0004, beta1=0.5, beta2=0.999, lamda=100.)
-
     print("Starting run...")
-
     with mlflow.start_run() as run:
-        GAN_model.train_model(train_loader, epochs=200)
+        # TODO Test images for visualization
+
+        G_net = Generator()
+        print("Started generator pretrain...")
+        pl.Trainer(max_epochs=cfg.model.pretrain_epochs).fit(G_net, train_loader)
+        print("Generator pretrain completed!")
+
+        print("Started GAN training...")
+        GAN_model = GAN(G_net)
+        pl.Trainer(max_epochs=cfg.model.epochs).fit(GAN_model, train_loader)
+        print("GAN train completed!")
+
 
 if __name__ == "__main__":
     train()
