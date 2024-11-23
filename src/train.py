@@ -5,7 +5,7 @@ import lightning as pl
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
-from src.datasets.cgan_dataset import GAN_Dataset
+from src.arch.proper_cgan.dataset import GAN_Dataset
 from src.arch.proper_cgan.model import GAN, Generator
 
 # Enable autologging
