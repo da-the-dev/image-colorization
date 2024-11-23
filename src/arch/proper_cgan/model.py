@@ -59,6 +59,7 @@ class Discriminator(pl.LightningModule):
 
     def configure_model(self):
         self._build()
+        self._init_model_weights()
 
     def forward(self, x):
         return self.model(x)
@@ -85,5 +86,25 @@ class Discriminator(pl.LightningModule):
         if act:
             layers += [nn.LeakyReLU(0.2, True)]
         return nn.Sequential(*layers)
+
+    def _init_model_weights(self, init="norm", gain=0.02):
+        def init_func(m):
+            classname = m.__class__.__name__
+            if hasattr(m, "weight") and "Conv" in classname:
+                if init == "norm":
+                    nn.init.normal_(m.weight.data, mean=0.0, std=gain)
+                elif init == "xavier":
+                    nn.init.xavier_normal_(m.weight.data, gain=gain)
+                elif init == "kaiming":
+                    nn.init.kaiming_normal_(m.weight.data, a=0, mode="fan_in")
+
+                if hasattr(m, "bias") and m.bias is not None:
+                    nn.init.constant_(m.bias.data, 0.0)
+            elif "BatchNorm2d" in classname:
+                nn.init.normal_(m.weight.data, 1.0, gain)
+                nn.init.constant_(m.bias.data, 0.0)
+
+        self.model.apply(init_func)
+        print(f"Initializing the model with {init} initialization")
 
 
