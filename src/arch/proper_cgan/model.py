@@ -42,6 +42,14 @@ class Generator(pl.LightningModule):
 
         loss = self.criterion(preds, ab)
 
+        self.log(
+            "L1 loss for GNet during pretrain",
+            loss,
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+        )
+
         return loss
 
     def configure_optimizers(self):
