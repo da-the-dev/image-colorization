@@ -108,3 +108,113 @@ class Discriminator(pl.LightningModule):
         print(f"Initializing the model with {init} initialization")
 
 
+class GAN(pl.LightningModule):
+    def __init__(
+        self,
+        G_net,
+        lr_G=0.0004,
+        lr_D=0.0004,
+        beta1=0.5,
+        beta2=0.999,
+        lamda=100.0,
+    ):
+        super().__init__()
+
+        self.automatic_optimization = False
+        self.save_hyperparameters(ignore=["G_net"])
+
+        self.G_net = G_net
+        self.D_net = Discriminator()
+
+        self.GANcriterion = GANLoss(gan_mode="vanilla")
+        self.L1criterion = nn.L1Loss()
+
+    def forward(self, L):
+        return self.G_net(L)
+
+    def training_step(self, batch):
+        # Split traininig batch
+        L = batch[:, [0], :, :]
+        ab = batch[:, [1, 2], :, :]
+        # Concat real image
+        real_image = torch.cat([L, ab], dim=1)
+
+        # Run generator to create a,b channels
+        fake_color = self(L)
+        # Concate fake image
+        fake_image = torch.cat([L, fake_color], dim=1).detach()
+
+        # Optimization
+        opt_G, opt_D = self.optimizers()
+
+        # Training Discriminator
+        self.D_net.train()
+        self.D_net.unfreeze()
+        self.toggle_optimizer(opt_D)
+        opt_D.zero_grad()
+
+        # Losses for D_net
+        fake_preds = self.D_net(fake_image)
+        loss_D_fake = self.GANcriterion(fake_preds, False)
+        real_preds = self.D_net(real_image)
+        loss_D_real = self.GANcriterion(real_preds, True)
+        loss_D = (loss_D_fake + loss_D_real) / 2
+
+        # Log losses
+        self.log_dict(
+            {
+                "loss_D_fake": loss_D_fake,
+                "loss_D_real": loss_D_real,
+                "loss_D": loss_D,
+            },
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
+        # Backward for D_net
+        self.manual_backward(loss_D)
+        opt_D.step()
+        self.untoggle_optimizer(opt_D)
+
+        # Training Generator
+        self.G_net.train()
+        self.D_net.freeze()
+        self.toggle_optimizer(opt_G)
+        opt_G.zero_grad()
+
+        # Losses for G_net
+        fake_preds = self.D_net(fake_image)
+        loss_G_GAN = self.GANcriterion(fake_preds, True)
+        loss_G_L1 = self.L1criterion(fake_color, ab) * self.hparams.lamda
+        loss_G = loss_G_GAN + loss_G_L1
+
+        # Log losses
+        self.log_dict(
+            {
+                "loss_G_GAN": loss_G_GAN,
+                "loss_G_L1": loss_G_L1,
+                "loss_G": loss_G,
+            },
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
+        # Backward for D_net
+        self.manual_backward(loss_G)
+        opt_G.step()
+        self.untoggle_optimizer(opt_G)
+
+    def configure_optimizers(self):
+        opt_G = optim.Adam(
+            self.G_net.parameters(),
+            lr=self.hparams.lr_G,
+            betas=(self.hparams.beta1, self.hparams.beta2),
+        )
+        opt_D = optim.Adam(
+            self.D_net.parameters(),
+            lr=self.hparams.lr_D,
+            betas=(self.hparams.beta1, self.hparams.beta2),
+        )
+        return [opt_G, opt_D]
