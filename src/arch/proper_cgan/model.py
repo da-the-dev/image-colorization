@@ -105,7 +105,7 @@ class Generator(pl.LightningModule):
         image_array = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
         image_array = image_array.reshape(fig.canvas.get_width_height()[::-1] + (3,))
 
-        mlflow.log_image(image_array, f"generated_images_epoch_{self.current_epoch}.png")
+        mlflow.log_image(image_array, f"generated_images_gnet_pretrain_epoch_{self.current_epoch}.png")
 
         self.model.train()
 
@@ -171,6 +171,7 @@ class GAN(pl.LightningModule):
     def __init__(
         self,
         G_net,
+        test_images,
         lr_G=0.0004,
         lr_D=0.0004,
         beta1=0.5,
@@ -180,13 +181,16 @@ class GAN(pl.LightningModule):
         super().__init__()
 
         self.automatic_optimization = False
-        self.save_hyperparameters(ignore=["G_net"])
+        self.save_hyperparameters(ignore=["G_net", "test_images"])
 
         self.G_net = G_net
         self.D_net = Discriminator()
 
         self.GANcriterion = GANLoss(gan_mode="vanilla")
         self.L1criterion = nn.L1Loss()
+        
+        self.test_images = test_images[:5]  # only take 5 images
+        self.test_images_cpu = np.stack([lab2rgb_denormalize(img) for img in self.test_images])
 
     def forward(self, L):
         return self.G_net(L)
@@ -277,3 +281,48 @@ class GAN(pl.LightningModule):
             betas=(self.hparams.beta1, self.hparams.beta2),
         )
         return [opt_G, opt_D]
+
+    def on_train_epoch_end(self):
+        # Switch generator to eval mode
+        self.G_net.eval()
+
+        # LAB, normalized, tensor
+        L = self.test_images[:, [0], :, :].to(self.device)
+        fake_ab = self(L)
+
+
+        # TODO Permute here
+        
+        # LAB, normalized, numpy
+        fake_images_cpu_lab = (
+            torch.concat([L, fake_ab], dim=1).detach().cpu().numpy()
+        )
+
+        # rgb, denormalized, numpy
+        fake_images_cpu_rgb = np.stack([lab2rgb_denormalize(img) for img in fake_images_cpu_lab])
+        
+
+        # Draw demo image
+        fig = plt.figure(figsize=(15, 8))
+        for i in range(5):
+            ax = plt.subplot(3, 5, i + 1)
+            ax.imshow(L[i][0].cpu(), cmap="gray")
+            ax.axis("off")
+            ax = plt.subplot(3, 5, i + 1 + 5)
+            ax.imshow(fake_images_cpu_rgb[i])
+            ax.axis("off")
+            ax = plt.subplot(3, 5, i + 1 + 10)
+            ax.imshow(self.test_images_cpu[i])
+            ax.axis("off")
+            
+        # Convert the Matplotlib figure to a PIL Image
+        fig.tight_layout()
+        fig.canvas.draw()  # Draw the canvas
+
+        # Convert to a NumPy array
+        image_array = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+        image_array = image_array.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+
+        mlflow.log_image(image_array, f"generated_images_gan_epoch_{self.current_epoch}.png")
+
+        self.G_net.train()

@@ -38,7 +38,7 @@ def train(cfg: DictConfig):
         print("Generator pretrain completed!")
 
         print("Started GAN training...")
-        GAN_model = GAN(G_net)
+        GAN_model = GAN(G_net, test_images)
         trainer = pl.Trainer(max_epochs=cfg.model.epochs)
         trainer.fit(GAN_model, train_loader)
         print("GAN train completed!")
