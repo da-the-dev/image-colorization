@@ -9,7 +9,7 @@ from src.datasets.cgan_dataset import GAN_Dataset
 from src.arch.proper_cgan.model import GAN, Generator
 
 # Enable autologging
-mlflow.pytorch.autolog()
+mlflow.pytorch.autolog(checkpoint=False)
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="main")
@@ -32,12 +32,14 @@ def train(cfg: DictConfig):
 
         G_net = Generator()
         print("Started generator pretrain...")
-        pl.Trainer(max_epochs=cfg.model.pretrain_epochs).fit(G_net, train_loader)
+        pretrainer = pl.Trainer(max_epochs=cfg.model.pretrain_epochs)
+        pretrainer.fit(G_net, train_loader)
         print("Generator pretrain completed!")
 
         print("Started GAN training...")
         GAN_model = GAN(G_net)
-        pl.Trainer(max_epochs=cfg.model.epochs).fit(GAN_model, train_loader)
+        trainer = pl.Trainer(max_epochs=cfg.model.epochs)
+        trainer.fit(GAN_model, train_loader)
         print("GAN train completed!")
 
 
