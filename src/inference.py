@@ -16,14 +16,14 @@ def load_model(uri):
 
 @hydra.main(version_base=None, config_path="../configs", config_name="main")
 def main(cfg: DictConfig):
-    datamodule = GanDataModule(cfg.train_path, cfg.batch_size, os.cpu_count())
+    datamodule = GanDataModule(cfg.test_path, cfg.train_path, cfg.batch_size, os.cpu_count())
     datamodule.setup("predict")
     
-    val_batch = next(iter(datamodule.val_dataloader()))[:5]
+    val_batch = next(iter(datamodule.test_dataloader()))[:5]
     val_batch_cpu = np.stack([lab2rgb_denormalize(img) for img in val_batch])
 
-    uri = "MODEL URI"
-    model = load_model(uri)
+    uri = "runs:/1c3deafe5165481c95237221b2085474/gan"
+    model = load_model(uri).to('cuda')
     model.eval()
 
     # LAB, normalized, tensor

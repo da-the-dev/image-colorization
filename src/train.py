@@ -5,7 +5,7 @@ import lightning as pl
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
-from src.arch.proper_cgan.dataset import GAN_Dataset
+from src.arch.proper_cgan.pl_dataset import GanDataModule
 from src.arch.proper_cgan.model import GAN, Generator
 
 # Enable autologging
@@ -20,25 +20,27 @@ def train(cfg: DictConfig):
     # Create a new MLflow Experiment
     mlflow.set_experiment("Model training with MLFlow")
 
-    dataset = GAN_Dataset(cfg.train_path, split="train")
+    # dataset = GAN_Dataset(cfg.train_path, split="train")
 
-    train_loader = DataLoader(
-        dataset,
-        batch_size=cfg.batch_size,
-        num_workers=os.cpu_count(),
-        pin_memory=True,
-    )
-
+    # train_loader = DataLoader(
+    #     dataset,
+    #     batch_size=cfg.batch_size,
+    #     num_workers=os.cpu_count(),
+    #     pin_memory=True,
+    # )
+    dm = GanDataModule(cfg.train_path, cfg.batch_size, os.cpu_count())
+    
     print("Starting run...")
     with mlflow.start_run() as run:
         # Take first batch from dataloader for test images
-        test_images = next(iter(train_loader))
+        #test_images = next(iter(train_loader))
 
         input_example = (
             test_images[0, 0, :, :].unsqueeze(0).unsqueeze(0).detach().cpu().numpy()
         )
 
         G_net = Generator(test_images)
+        
         print("Started generator pretrain...")
         pretrainer = pl.Trainer(max_epochs=cfg.model.pretrain_epochs)
         pretrainer.fit(G_net, train_loader)
