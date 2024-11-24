@@ -5,6 +5,7 @@ import lightning as pl
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
+from src.arch.proper_cgan.signature import signature
 from src.arch.proper_cgan.pl_dataset import GanDataModule
 from src.arch.proper_cgan.model import GAN, Generator
 
@@ -49,7 +50,7 @@ def train(cfg: DictConfig):
         mlflow.pytorch.log_model(
             pytorch_model=G_net,
             artifact_path="gnet",
-            input_example=input_example,
+            signature=signature,
             registered_model_name="U-net Generator (ResNet backbone)",
         )
 
@@ -62,7 +63,7 @@ def train(cfg: DictConfig):
         mlflow.pytorch.log_model(
             pytorch_model=GAN_model,
             artifact_path="gan",
-            input_example=input_example,
+            signature=signature,
             registered_model_name="Conditional GAN",
         )
 
