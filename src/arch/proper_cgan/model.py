@@ -24,8 +24,6 @@ class Generator(pl.LightningModule):
         self.save_hyperparameters(ignore=["test_images"])
         self.configure_model()
         self.criterion = nn.L1Loss()
-        self.test_images = test_images[:5]  # only take 5 images
-        self.test_images_cpu = np.stack([lab2rgb_denormalize(img) for img in self.test_images])
 
     def configure_model(self):
         self.model = self._build()
@@ -57,6 +55,26 @@ class Generator(pl.LightningModule):
 
         return loss
 
+    def validation_step(self, batch, batchidx):
+        L = batch[:, [0], :, :].to(self.device)
+        ab = batch[:, [1, 2], :, :].to(self.device)
+
+        preds = self(L)
+
+        loss = self.criterion(preds, ab)
+
+        self.log(
+            "Validation L1 loss for GNet during pretrain",
+            loss,
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+        )
+
+        # Save first batch for visualization
+        if batchidx == 0:
+            self.visualization_batch = batch[:5]
+
     def configure_optimizers(self):
         return optim.Adam(
             self.model.parameters(),
@@ -64,25 +82,24 @@ class Generator(pl.LightningModule):
             (self.hparams.beta1, self.hparams.beta2),
         )
 
-    def on_train_epoch_end(self):
-        # Switch generator to eval mode
-        self.model.eval()
-
-        # LAB, normalized, tensor
-        L = self.test_images[:, [0], :, :].to(self.device)
-        fake_ab = self.model(L)
-
-
-        # TODO Permute here
-        
-        # LAB, normalized, numpy
-        fake_images_cpu_lab = (
-            torch.concat([L, fake_ab], dim=1).detach().cpu().numpy()
+    def on_validation_epoch_end(self):
+        # Setup imags for visualization
+        images = self.visualization_batch
+        images_cpu = np.stack(
+            [lab2rgb_denormalize(img) for img in self.visualization_batch]
         )
 
+        # LAB, normalized, tensor
+        L = images[:, [0], :, :].to(self.device)
+        fake_ab = self.model(L)
+
+        # LAB, normalized, numpy
+        fake_images_cpu_lab = torch.concat([L, fake_ab], dim=1).detach().cpu().numpy()
+
         # rgb, denormalized, numpy
-        fake_images_cpu_rgb = np.stack([lab2rgb_denormalize(img) for img in fake_images_cpu_lab])
-        
+        fake_images_cpu_rgb = np.stack(
+            [lab2rgb_denormalize(img) for img in fake_images_cpu_lab]
+        )
 
         # Draw demo image
         fig = plt.figure(figsize=(15, 8))
@@ -94,9 +111,9 @@ class Generator(pl.LightningModule):
             ax.imshow(fake_images_cpu_rgb[i])
             ax.axis("off")
             ax = plt.subplot(3, 5, i + 1 + 10)
-            ax.imshow(self.test_images_cpu[i])
+            ax.imshow(images_cpu[i])
             ax.axis("off")
-            
+
         # Convert the Matplotlib figure to a PIL Image
         fig.tight_layout()
         fig.canvas.draw()  # Draw the canvas
@@ -105,9 +122,11 @@ class Generator(pl.LightningModule):
         image_array = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
         image_array = image_array.reshape(fig.canvas.get_width_height()[::-1] + (3,))
 
-        mlflow.log_image(image_array, f"generated_images_gnet_pretrain_epoch_{self.current_epoch}.png")
-
-        self.model.train()
+        # Log image to MLFlow
+        mlflow.log_image(
+            image_array,
+            f"generated_images_gnet_pretrain_epoch_{self.current_epoch}.png",
+        )
 
 
 class Discriminator(pl.LightningModule):
@@ -188,9 +207,6 @@ class GAN(pl.LightningModule):
 
         self.GANcriterion = GANLoss(gan_mode="vanilla")
         self.L1criterion = nn.L1Loss()
-        
-        self.test_images = test_images[:5]  # only take 5 images
-        self.test_images_cpu = np.stack([lab2rgb_denormalize(img) for img in self.test_images])
 
     def forward(self, L):
         return self.G_net(L)
@@ -269,6 +285,67 @@ class GAN(pl.LightningModule):
         opt_G.step()
         self.untoggle_optimizer(opt_G)
 
+    def validation_step(self, batch, batchidx):
+        # Switch models to eval
+        self.G_net.eval()
+        self.D_net.eval()
+
+        # Split validation batch
+        L = batch[:, [0], :, :]
+        ab = batch[:, [1, 2], :, :]
+        # Concat real image
+        real_image = torch.cat([L, ab], dim=1)
+
+        # Run generator to create a,b channels
+        fake_color = self(L)
+        # Concate fake image
+        fake_image = torch.cat([L, fake_color], dim=1).detach()
+
+        # Losses for D_net
+        fake_preds = self.D_net(fake_image)
+        loss_D_fake = self.GANcriterion(fake_preds, False)
+        real_preds = self.D_net(real_image)
+        loss_D_real = self.GANcriterion(real_preds, True)
+        loss_D = (loss_D_fake + loss_D_real) / 2
+
+        # Log losses
+        self.log_dict(
+            {
+                "loss_D_fake_val": loss_D_fake,
+                "loss_D_real_val": loss_D_real,
+                "loss_D_val": loss_D,
+            },
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
+        # Losses for G_net
+        fake_preds = self.D_net(fake_image)
+        loss_G_GAN = self.GANcriterion(fake_preds, True)
+        loss_G_L1 = self.L1criterion(fake_color, ab) * self.hparams.lamda
+        loss_G = loss_G_GAN + loss_G_L1
+
+        # Log losses
+        self.log_dict(
+            {
+                "loss_G_GAN_val": loss_G_GAN,
+                "loss_G_L1_val": loss_G_L1,
+                "loss_G_val": loss_G,
+            },
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
+        # Switch models back to train
+        self.G_net.train()
+        self.D_net.train()
+
+        # Save first batch for visualization
+        if batchidx == 0:
+            self.visualiztion_batch = batch
+
     def configure_optimizers(self):
         opt_G = optim.Adam(
             self.G_net.parameters(),
@@ -282,25 +359,28 @@ class GAN(pl.LightningModule):
         )
         return [opt_G, opt_D]
 
-    def on_train_epoch_end(self):
+    def on_validation_epoch_end(self):
+        images = self.visualiztion_batch
+        images_cpu = np.stack(
+            [lab2rgb_denormalize(img) for img in self.visualiztion_batch]
+        )
+
         # Switch generator to eval mode
         self.G_net.eval()
 
         # LAB, normalized, tensor
-        L = self.test_images[:, [0], :, :].to(self.device)
+        L = images[:, [0], :, :].to(self.device)
         fake_ab = self(L)
 
-
         # TODO Permute here
-        
+
         # LAB, normalized, numpy
-        fake_images_cpu_lab = (
-            torch.concat([L, fake_ab], dim=1).detach().cpu().numpy()
-        )
+        fake_images_cpu_lab = torch.concat([L, fake_ab], dim=1).detach().cpu().numpy()
 
         # rgb, denormalized, numpy
-        fake_images_cpu_rgb = np.stack([lab2rgb_denormalize(img) for img in fake_images_cpu_lab])
-        
+        fake_images_cpu_rgb = np.stack(
+            [lab2rgb_denormalize(img) for img in fake_images_cpu_lab]
+        )
 
         # Draw demo image
         fig = plt.figure(figsize=(15, 8))
@@ -312,9 +392,9 @@ class GAN(pl.LightningModule):
             ax.imshow(fake_images_cpu_rgb[i])
             ax.axis("off")
             ax = plt.subplot(3, 5, i + 1 + 10)
-            ax.imshow(self.test_images_cpu[i])
+            ax.imshow(images_cpu[i])
             ax.axis("off")
-            
+
         # Convert the Matplotlib figure to a PIL Image
         fig.tight_layout()
         fig.canvas.draw()  # Draw the canvas
@@ -323,6 +403,9 @@ class GAN(pl.LightningModule):
         image_array = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
         image_array = image_array.reshape(fig.canvas.get_width_height()[::-1] + (3,))
 
-        mlflow.log_image(image_array, f"generated_images_gan_epoch_{self.current_epoch}.png")
+        mlflow.log_image(
+            image_array, f"generated_images_gan_epoch_{self.current_epoch}.png"
+        )
 
+        # Switch generator back to train mode
         self.G_net.train()

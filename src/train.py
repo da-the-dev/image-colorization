@@ -2,8 +2,10 @@ import os
 import hydra
 import mlflow
 import lightning as pl
+import mlflow.models
+import mlflow.types
 from omegaconf import DictConfig
-from torch.utils.data import DataLoader
+
 
 from src.arch.proper_cgan.signature import signature
 from src.arch.proper_cgan.pl_dataset import GanDataModule
@@ -21,30 +23,15 @@ def train(cfg: DictConfig):
     # Create a new MLflow Experiment
     mlflow.set_experiment("Model training with MLFlow")
 
-    # dataset = GAN_Dataset(cfg.train_path, split="train")
-
-    # train_loader = DataLoader(
-    #     dataset,
-    #     batch_size=cfg.batch_size,
-    #     num_workers=os.cpu_count(),
-    #     pin_memory=True,
-    # )
     dm = GanDataModule(cfg.train_path, cfg.batch_size, os.cpu_count())
-    
+
     print("Starting run...")
     with mlflow.start_run() as run:
-        # Take first batch from dataloader for test images
-        #test_images = next(iter(train_loader))
+        G_net = Generator()
 
-        input_example = (
-            test_images[0, 0, :, :].unsqueeze(0).unsqueeze(0).detach().cpu().numpy()
-        )
-
-        G_net = Generator(test_images)
-        
         print("Started generator pretrain...")
         pretrainer = pl.Trainer(max_epochs=cfg.model.pretrain_epochs)
-        pretrainer.fit(G_net, train_loader)
+        pretrainer.fit(G_net, dm)
         print("Generator pretrain completed!")
 
         mlflow.pytorch.log_model(
@@ -55,9 +42,9 @@ def train(cfg: DictConfig):
         )
 
         print("Started GAN training...")
-        GAN_model = GAN(G_net, test_images)
+        GAN_model = GAN(G_net)
         trainer = pl.Trainer(max_epochs=cfg.model.epochs)
-        trainer.fit(GAN_model, train_loader)
+        trainer.fit(GAN_model, dm)
         print("GAN train completed!")
 
         mlflow.pytorch.log_model(
