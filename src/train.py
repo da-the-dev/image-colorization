@@ -6,6 +6,8 @@ import mlflow.models
 import mlflow.types
 from omegaconf import DictConfig
 
+from lightning.pytorch.callbacks.early_stopping import EarlyStopping
+
 
 from src.arch.proper_cgan.signature import signature
 from src.arch.proper_cgan.pl_dataset import GANDataModule
@@ -49,7 +51,7 @@ def train(cfg: DictConfig):
 
         print("Started GAN training...")
         GAN_model = GAN(G_net)
-        trainer = l.Trainer(max_epochs=cfg.model.epochs)
+        trainer = l.Trainer(max_epochs=cfg.model.epochs, callbacks=[EarlyStopping(monitor='loss_G_val', patience=cfg.model.patience)])
         trainer.fit(GAN_model, datamodule=dm)
         print("GAN train completed!")
 
