@@ -13,8 +13,8 @@ from src.arch.proper_cgan.model import GAN, Generator
 
 # Enable autologging
 mlflow.pytorch.autolog(
-    checkpoint=False, # Skip checkpoining, no metrics, no need to save this info
-    log_models=False, # Skip logging models, we do it manually
+    checkpoint=False,  # Skip checkpoining, no metrics, no need to save this info
+    log_models=False,  # Skip logging models, we do it manually
 )
 
 
