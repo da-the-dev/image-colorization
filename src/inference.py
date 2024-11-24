@@ -18,7 +18,9 @@ def load_model(uri):
 def main(cfg: DictConfig):
     datamodule = GanDataModule(cfg.train_path, cfg.batch_size, os.cpu_count())
     datamodule.setup("predict")
-    val_batch = np.stack([lab2rgb_denormalize(img) for img in next(iter(datamodule.val_dataloader()))[:5]])
+    
+    val_batch = next(iter(datamodule.val_dataloader()))[:5]
+    val_batch_cpu = np.stack([lab2rgb_denormalize(img) for img in val_batch])
 
     uri = "MODEL URI"
     model = load_model(uri)
@@ -46,7 +48,7 @@ def main(cfg: DictConfig):
         ax.imshow(fake_images_cpu_rgb[i])
         ax.axis("off")
         ax = plt.subplot(3, 5, i + 1 + 10)
-        ax.imshow(val_batch[i])
+        ax.imshow(val_batch_cpu[i])
         ax.axis("off")
 
     # Convert the Matplotlib figure to a PIL Image
