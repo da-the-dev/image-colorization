@@ -11,7 +11,7 @@ def rgb2lab_normalize(image: np.ndarray) -> np.ndarray:
     Returns:
         np.ndarray: The LAB image with values normalized to the range [-1, 1].
     """
-    lab_image = color.rgb2lab(image)  # Convert RGB to LAB
+    lab_image = color.rgb2lab(image / 255.0)  # Convert RGB to LAB
     # Normalize L, a, b to the range [-1, 1]
     lab_image[..., 0] = (lab_image[..., 0] / 50.0) - 1.0  # Normalize L: [0, 100] -> [-1, 1]
     lab_image[..., 1:] = lab_image[..., 1:] / 128.0       # Normalize a, b: [-128, 127] -> [-1, 1]
@@ -34,4 +34,4 @@ def lab2rgb_denormalize(image: np.ndarray) -> np.ndarray:
     lab_image[1:, ...] = image[1:, ...] * 128.0        # Denormalize a, b: [-1, 1] -> [-128, 127]
     lab_image = lab_image.transpose((1, 2, 0))
     rgb_image = color.lab2rgb(lab_image)  # Convert LAB back to RGB
-    return rgb_image
+    return (rgb_image * 255.0).astype(np.uint8)

@@ -1,34 +1,37 @@
-import torch
-import torch.nn.functional as F
-import torchvision.datasets as datasets
-import torchvision.transforms as transforms
-
+# Import PyTorch Lightning
+import lightning.pytorch as pl
 from torch.utils.data import DataLoader
-
 from torch.utils.data import random_split
 
 from src.arch.proper_cgan.dataset import GAN_Dataset
 
-# Import PyTorch Lightning
-import pytorch_lightning as pl
 
-
-class GanDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir_train, data_dir_test, batch_size, num_workers):
+class GANDataModule(pl.LightningDataModule):
+    def __init__(
+        self,
+        data_dir_train,
+        data_dir_test,
+        batch_size,
+        num_workers,
+    ):
         super().__init__()
-        self.data_dir_train = data_dir_train
-        self.data_dir_test = data_dir_test
+
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.data_dir_train = data_dir_train
+        self.data_dir_test = data_dir_test
 
-    def setup(
-        self, stage
-    ):  # https://youtu.be/NjF1ZpRO4Ws?si=vmrpGVxMMUIt6dhC 4:00 что делать с кастомным датасетом
-        entire_dataset = GAN_Dataset(self.data_dir_train)
+    def prepare_data(self):
+        pass
 
-        self.train_ds, self.val_ds = random_split(entire_dataset, [0.8, 0.2])
+    def setup(self, stage=None):
+        if stage == "fit" or stage is None:
+            entire_dataset = GAN_Dataset(self.data_dir_train)
 
-        self.test_ds = GAN_Dataset(self.data_dir_test)
+            self.train_ds, self.val_ds = random_split(entire_dataset, [0.8, 0.2])
+
+        if stage == "test" or stage == "predict" or stage is None:
+            self.test_ds = GAN_Dataset(self.data_dir_test)
 
     def train_dataloader(self):
         return DataLoader(

@@ -15,7 +15,6 @@ from src.arch.proper_cgan.losses import GANLoss
 class Generator(pl.LightningModule):
     def __init__(
         self,
-        test_images,
         lr=0.0004,
         beta1=0.9,
         beta2=0.999,
@@ -86,7 +85,7 @@ class Generator(pl.LightningModule):
         # Setup imags for visualization
         images = self.visualization_batch
         images_cpu = np.stack(
-            [lab2rgb_denormalize(img) for img in self.visualization_batch]
+            [lab2rgb_denormalize(img) for img in images.detach().cpu().numpy()]
         )
 
         # LAB, normalized, tensor
@@ -190,7 +189,6 @@ class GAN(pl.LightningModule):
     def __init__(
         self,
         G_net,
-        test_images,
         lr_G=0.0004,
         lr_D=0.0004,
         beta1=0.5,
@@ -362,7 +360,7 @@ class GAN(pl.LightningModule):
     def on_validation_epoch_end(self):
         images = self.visualiztion_batch
         images_cpu = np.stack(
-            [lab2rgb_denormalize(img) for img in self.visualiztion_batch]
+            [lab2rgb_denormalize(img) for img in images.detach().cpu().numpy()]
         )
 
         # Switch generator to eval mode

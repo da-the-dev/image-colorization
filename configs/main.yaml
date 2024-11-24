@@ -3,6 +3,8 @@ defaults:
   - model/model
 
 train_path: "data/train2017.parquet"
+test_path: "data/test2017.parquet"
+
 batch_size: 16
 
 hydra:
