@@ -18,7 +18,7 @@ def load_model(uri):
 def main(cfg: DictConfig):
     datamodule = GanDataModule(cfg.train_path, cfg.batch_size, os.cpu_count())
     datamodule.setup("predict")
-    val_batch = next(iter(datamodule.val_dataloader()))[:5]
+    val_batch = np.stack([lab2rgb_denormalize(img) for img in next(iter(datamodule.val_dataloader()))[:5]])
 
     uri = "MODEL URI"
     model = load_model(uri)
