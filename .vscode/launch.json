@@ -13,5 +13,11 @@
             "request": "launch",
             "module": "src.train",
         },
+        {
+            "name": "Debug inference",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.inference",
+        },
     ]
 }
