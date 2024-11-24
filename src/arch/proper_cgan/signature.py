@@ -1,11 +1,11 @@
 __all__ = ["signature"]
 
-import torch
+import numpy as np
 from mlflow.models import ModelSignature
-from mlflow.types import Schema, TensorSpec
+from mlflow.types import Schema, TensorSpec, DataType
 
 
 signature = ModelSignature(
-    Schema(TensorSpec(torch.float32, (-1, 1, 256, 256), "Input")),
-    Schema(TensorSpec(torch.float32, (-1, 2, 256, 256), "Output")),
+    Schema([TensorSpec(np.dtype(np.float32), (-1, 1, 256, 256), "Input")]),
+    Schema([TensorSpec(np.dtype(np.float32), (-1, 2, 256, 256), "Output")]),
 )
