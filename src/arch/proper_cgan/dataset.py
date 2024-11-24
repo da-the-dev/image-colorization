@@ -10,25 +10,17 @@ from src.arch.proper_cgan.utils import rgb2lab_normalize
 
 
 class GAN_Dataset(Dataset):
-    def __init__(self, data_path, split, img_size=256):
+    def __init__(self, data_path, img_size=256):
         self.img_size = img_size
         self.parquet_dataset = pq.ParquetFile(data_path)
 
-        if split == "train":
-            self.transforms = transforms.Compose(
-                [
-                    transforms.ToTensor(),
-                    transforms.Resize((img_size, img_size), Image.BICUBIC),
-                    # transforms.RandomHorizontalFlip(),
-                ]
-            )
-        elif split == "val":
-            self.transforms = transforms.Compose(
-                [
-                    # transforms.ToTensor(),
-                    transforms.Resize((img_size, img_size), Image.BICUBIC),
-                ]
-            )
+        self.transforms = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Resize((img_size, img_size), Image.BICUBIC),
+                # transforms.RandomHorizontalFlip(),
+            ]
+        )
 
     def __getitem__(self, idx):
         row_group_size = (
