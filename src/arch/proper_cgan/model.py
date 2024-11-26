@@ -190,6 +190,7 @@ class GAN(pl.LightningModule):
     def __init__(
         self,
         G_net,
+        registered_model_name,
         lr_G=0.0004,
         lr_D=0.0004,
         beta1=0.5,
@@ -209,6 +210,7 @@ class GAN(pl.LightningModule):
         self.L1criterion = nn.L1Loss()
 
         self.skip_epochs = skip_epochs
+        self.registered_model_name = registered_model_name
 
     def forward(self, L):
         return self.G_net(L)

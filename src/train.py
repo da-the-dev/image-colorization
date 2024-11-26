@@ -50,8 +50,11 @@ def train(cfg: DictConfig):
         )
 
         print("Started GAN training...")
-        GAN_model = GAN(G_net)
         trainer = l.Trainer(max_epochs=cfg.model.epochs, callbacks=[EarlyStopping(monitor='loss_G_val', patience=cfg.model.patience)])
+        GAN_model = GAN(
+            G_net,
+            cfg.model.arch,
+        )
         trainer.fit(GAN_model, datamodule=dm)
         print("GAN train completed!")
 
@@ -59,7 +62,7 @@ def train(cfg: DictConfig):
             pytorch_model=GAN_model,
             artifact_path="gan",
             signature=signature,
-            registered_model_name="Conditional GAN",
+            registered_model_name=cfg.model.arch,
         )
 
 
