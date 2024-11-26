@@ -1,4 +1,14 @@
 arch: "CGAN"
 
 pretrain_epochs: 5
-epochs: 5
+epochs: 20
+
+lr_G: 0.0004
+beta1_G: 0.5
+beta2_G: 0.999
+
+lr_D: 0.0004
+beta1_D: 0.5
+beta2_D: 0.999
+
+lamda: 100.0
