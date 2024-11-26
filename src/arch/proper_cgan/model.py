@@ -417,7 +417,7 @@ class GAN(pl.LightningModule):
 
     def on_train_epoch_end(self):
         if self.current_epoch >= self.skip_epochs:
-            mlflow.log_model(
+            mlflow.pytorch.log_model(
                 self,
                 f"cgan_checkpoint_{self.current_epoch}",
                 signature=signature,
