@@ -8,6 +8,7 @@ from fastai.vision.all import *
 from fastai.vision.models.unet import DynamicUnet
 from torchvision.models.resnet import resnet34
 
+from src.arch.proper_cgan.signature import signature
 from src.arch.proper_cgan.utils import lab2rgb_denormalize
 from src.arch.proper_cgan.losses import GANLoss
 
@@ -194,17 +195,20 @@ class GAN(pl.LightningModule):
         beta1=0.5,
         beta2=0.999,
         lamda=100.0,
+        skip_epochs=200,
     ):
         super().__init__()
 
         self.automatic_optimization = False
-        self.save_hyperparameters(ignore=["G_net", "test_images"])
+        self.save_hyperparameters(ignore=["G_net", "test_images", "skip_epochs"])
 
         self.G_net = G_net
         self.D_net = Discriminator()
 
         self.GANcriterion = GANLoss(gan_mode="vanilla")
         self.L1criterion = nn.L1Loss()
+
+        self.skip_epochs = skip_epochs
 
     def forward(self, L):
         return self.G_net(L)
@@ -341,7 +345,7 @@ class GAN(pl.LightningModule):
         self.D_net.train()
 
         # Save first batch for visualization
-        if batchidx == 0:
+        if batchidx == 0 and self.current_epoch >= self.skip_epochs:
             self.visualiztion_batch = batch
 
     def configure_optimizers(self):
@@ -358,6 +362,9 @@ class GAN(pl.LightningModule):
         return [opt_G, opt_D]
 
     def on_validation_epoch_end(self):
+        # Skip image generation for the first couple epochs
+        if self.current_epoch < self.skip_epochs:
+            return
         images = self.visualiztion_batch
         images_cpu = np.stack(
             [lab2rgb_denormalize(img) for img in images.detach().cpu().numpy()]
@@ -407,3 +414,12 @@ class GAN(pl.LightningModule):
 
         # Switch generator back to train mode
         self.G_net.train()
+
+    def on_train_epoch_end(self):
+        if self.current_epoch >= self.skip_epochs:
+            mlflow.log_model(
+                self,
+                f"cgan_checkpoint_{self.current_epoch}",
+                signature=signature,
+                registered_model_name=self.registered_model_name,
+            )
