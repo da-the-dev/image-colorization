@@ -34,7 +34,7 @@ def train(cfg: DictConfig):
     print("Starting run...")
     with mlflow.start_run() as run:
         mlflow.log_params(cfg.model)
-        
+
         G_net = Generator(
             cfg.model.lr_G,
             cfg.model.beta1_G,
@@ -45,13 +45,6 @@ def train(cfg: DictConfig):
         pretrainer = l.Trainer(max_epochs=cfg.model.pretrain_epochs)
         pretrainer.fit(G_net, datamodule=dm)
         print("Generator pretrain completed!")
-
-        mlflow.pytorch.log_model(
-            pytorch_model=G_net,
-            artifact_path="gnet",
-            signature=signature,
-            registered_model_name="U-net Generator (ResNet backbone)",
-        )
 
         print("Started GAN training...")
         GAN_model = GAN(
@@ -75,14 +68,6 @@ def train(cfg: DictConfig):
         trainer.fit(GAN_model, datamodule=dm)
         print("GAN train completed!")
 
-    
-
-        # mlflow.pytorch.log_model(
-        #     pytorch_model=GAN_model,
-        #     artifact_path="gan",
-        #     signature=signature,
-        #     registered_model_name=cfg.model.arch,
-        # )
 
 if __name__ == "__main__":
     train()
