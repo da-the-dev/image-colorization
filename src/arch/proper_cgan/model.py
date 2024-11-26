@@ -196,7 +196,7 @@ class GAN(pl.LightningModule):
         beta1=0.5,
         beta2=0.999,
         lamda=100.0,
-        skip_epochs=200,
+        skip_epochs=50,
     ):
         super().__init__()
 
