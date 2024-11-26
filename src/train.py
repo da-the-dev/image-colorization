@@ -50,10 +50,15 @@ def train(cfg: DictConfig):
         )
 
         print("Started GAN training...")
-        trainer = l.Trainer(max_epochs=cfg.model.epochs, callbacks=[EarlyStopping(monitor='loss_G_val', patience=cfg.model.patience)])
         GAN_model = GAN(
             G_net,
             cfg.model.arch,
+        )
+        trainer = l.Trainer(
+            max_epochs=cfg.model.epochs,
+            callbacks=[
+                # EarlyStopping(monitor="loss_G_val", patience=cfg.model.patience)
+            ],
         )
         trainer.fit(GAN_model, datamodule=dm)
         print("GAN train completed!")
