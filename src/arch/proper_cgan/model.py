@@ -45,8 +45,13 @@ class Generator(pl.LightningModule):
 
         loss = self.criterion(preds, ab)
 
-        metric = ("L1 loss for GNet during pretrain", loss.item())
-        mlflow.log_metric(*metric)
+        self.log(
+            "L1 loss for GNet during pretrain",
+            loss,
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+        )
 
         return loss
 
@@ -58,8 +63,13 @@ class Generator(pl.LightningModule):
 
         loss = self.criterion(preds, ab)
 
-        metric = ("Validation L1 loss for GNet during pretrain", loss.item())
-        mlflow.log_metric(*metric)
+        self.log(
+            "Validation L1 loss for GNet during pretrain",
+            loss,
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+        )
 
         # Save first batch for visualization
         if batchidx == 0:
@@ -244,12 +254,17 @@ class GAN(pl.LightningModule):
         loss_D_real = self.GANcriterion(real_preds, True)
         loss_D = (loss_D_fake + loss_D_real) / 2
 
-        metrics_D_net = {
-            "loss_D_fake": loss_D_fake.item(),
-            "loss_D_real": loss_D_real.item(),
-            "loss_D": loss_D.item(),
-        }
-        mlflow.log_metrics(metrics_D_net)
+        # Log losses
+        self.log_dict(
+            {
+                "loss_D_fake": loss_D_fake,
+                "loss_D_real": loss_D_real,
+                "loss_D": loss_D,
+            },
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
 
         # Backward for D_net
         self.manual_backward(loss_D)
@@ -269,12 +284,16 @@ class GAN(pl.LightningModule):
         loss_G = loss_G_GAN + loss_G_L1
 
         # Log losses
-        metrics_G_net = {
-            "loss_G_GAN": loss_G_GAN.item(),
-            "loss_G_L1": loss_G_L1.item(),
-            "loss_G": loss_G.item(),
-        }
-        mlflow.log_metrics(metrics_G_net)
+        self.log_dict(
+            {
+                "loss_G_GAN": loss_G_GAN,
+                "loss_G_L1": loss_G_L1,
+                "loss_G": loss_G,
+            },
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
 
         # Backward for D_net
         self.manual_backward(loss_G)
@@ -305,12 +324,16 @@ class GAN(pl.LightningModule):
         loss_D = (loss_D_fake + loss_D_real) / 2
 
         # Log losses
-        metrics_D_net = {
-            "loss_D_fake_val": loss_D_fake.item(),
-            "loss_D_real_val": loss_D_real.item(),
-            "loss_D_val": loss_D.item(),
-        }
-        mlflow.log_metrics(metrics_D_net)
+        self.log_dict(
+            {
+                "loss_D_fake_val": loss_D_fake.item(),
+                "loss_D_real_val": loss_D_real.item(),
+                "loss_D_val": loss_D.item(),
+            },
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
 
         # Losses for G_net
         fake_preds = self.D_net(fake_image)
@@ -319,12 +342,16 @@ class GAN(pl.LightningModule):
         loss_G = loss_G_GAN + loss_G_L1
 
         # Log losses
-        metrics_G_net = {
-            "loss_G_GAN_val": loss_G_GAN.item(),
-            "loss_G_L1_val": loss_G_L1.item(),
-            "loss_G_val": loss_G.item(),
-        }
-        mlflow.log_metrics(metrics_G_net)
+        self.log_dict(
+            {
+                "loss_G_GAN_val": loss_G_GAN.item(),
+                "loss_G_L1_val": loss_G_L1.item(),
+                "loss_G_val": loss_G.item(),
+            },
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
 
         # Switch models back to train
         self.G_net.train()
