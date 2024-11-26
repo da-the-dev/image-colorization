@@ -62,7 +62,7 @@ def train(cfg: DictConfig):
         trainer = l.Trainer(
             max_epochs=cfg.model.epochs,
             callbacks=[
-                EarlyStopping(monitor="loss_G_val", patience=cfg.model.patience)
+                # EarlyStopping(monitor="loss_G_val", patience=cfg.model.patience)
             ],
         )
         trainer.fit(GAN_model, datamodule=dm)
