@@ -12,11 +12,11 @@ from src.arch.proper_cgan.signature import signature
 from src.arch.proper_cgan.pl_dataset import GANDataModule
 from src.arch.proper_cgan.model import GAN, Generator
 
-# # Enable autologging
-# mlflow.pytorch.autolog(
-#     checkpoint=False,  # Skip checkpoining, no metrics, no need to save this info
-#     log_models=False,  # Skip logging models, we do it manually
-# )
+# Enable autologging
+mlflow.pytorch.autolog(
+    checkpoint=False,  # Skip checkpoining, we do it manually
+    log_models=False,  # Skip logging models, we do it manually
+)
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="main")
@@ -56,6 +56,7 @@ def train(cfg: DictConfig):
         print("Started GAN training...")
         GAN_model = GAN(
             G_net,
+            cfg.model.arch,
             cfg.model.lr_G,
             cfg.model.lr_D,
             cfg.model.beta1_G,
@@ -63,6 +64,7 @@ def train(cfg: DictConfig):
             cfg.model.beta1_D,
             cfg.model.beta2_D,
             cfg.model.lamda,
+            skip_epochs=cfg.model.skip_epochs,
         )
         trainer = l.Trainer(
             max_epochs=cfg.model.epochs,
@@ -73,13 +75,14 @@ def train(cfg: DictConfig):
         trainer.fit(GAN_model, datamodule=dm)
         print("GAN train completed!")
 
-        mlflow.pytorch.log_model(
-            pytorch_model=GAN_model,
-            artifact_path="gan",
-            signature=signature,
-            registered_model_name="Conditional GAN",
-        )
+    
 
+        # mlflow.pytorch.log_model(
+        #     pytorch_model=GAN_model,
+        #     artifact_path="gan",
+        #     signature=signature,
+        #     registered_model_name=cfg.model.arch,
+        # )
 
 if __name__ == "__main__":
     train()

@@ -12,3 +12,4 @@ beta1_D: 0.5
 beta2_D: 0.999
 
 lamda: 100.0
+skip_epochs: 200
