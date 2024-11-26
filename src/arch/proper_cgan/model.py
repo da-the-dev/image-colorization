@@ -8,7 +8,6 @@ from fastai.vision.all import *
 from fastai.vision.models.unet import DynamicUnet
 from torchvision.models.resnet import resnet34
 
-from src.arch.proper_cgan.signature import signature
 from src.arch.proper_cgan.utils import lab2rgb_denormalize
 from src.arch.proper_cgan.losses import GANLoss
 
@@ -48,7 +47,7 @@ class Generator(pl.LightningModule):
         self.log(
             "L1 loss for GNet during pretrain",
             loss,
-            prog_bar=False,
+            prog_bar=True,
             on_epoch=True,
             on_step=False,
         )
@@ -66,7 +65,7 @@ class Generator(pl.LightningModule):
         self.log(
             "Validation L1 loss for GNet during pretrain",
             loss,
-            prog_bar=False,
+            prog_bar=True,
             on_epoch=True,
             on_step=False,
         )
@@ -83,7 +82,6 @@ class Generator(pl.LightningModule):
         )
 
     def on_validation_epoch_end(self):
-        self.model.eval()
         # Setup imags for visualization
         images = self.visualization_batch
         images_cpu = np.stack(
@@ -128,7 +126,6 @@ class Generator(pl.LightningModule):
             image_array,
             f"generated_images_gnet_pretrain_epoch_{self.current_epoch}.png",
         )
-        self.model.train()
 
 
 class Discriminator(pl.LightningModule):
@@ -192,36 +189,22 @@ class GAN(pl.LightningModule):
     def __init__(
         self,
         G_net,
-        registered_model_name,
         lr_G=0.0004,
         lr_D=0.0004,
-        beta1_G=0.5,
-        beta2_G=0.999,
-        beta1_D=0.5,
-        beta2_D=0.999,
+        beta1=0.5,
+        beta2=0.999,
         lamda=100.0,
-        skip_epochs=200,
     ):
         super().__init__()
 
         self.automatic_optimization = False
-        self.save_hyperparameters(
-            ignore=[
-                "G_net",
-                "test_images",
-                "registered_model_name",
-                "skip_epochs",
-            ]
-        )
+        self.save_hyperparameters(ignore=["G_net", "test_images"])
 
         self.G_net = G_net
         self.D_net = Discriminator()
 
         self.GANcriterion = GANLoss(gan_mode="vanilla")
         self.L1criterion = nn.L1Loss()
-
-        self.registered_model_name = registered_model_name
-        self.skip_epochs = skip_epochs
 
     def forward(self, L):
         return self.G_net(L)
@@ -261,7 +244,7 @@ class GAN(pl.LightningModule):
                 "loss_D_real": loss_D_real,
                 "loss_D": loss_D,
             },
-            prog_bar=False,
+            prog_bar=True,
             on_step=False,
             on_epoch=True,
         )
@@ -290,7 +273,7 @@ class GAN(pl.LightningModule):
                 "loss_G_L1": loss_G_L1,
                 "loss_G": loss_G,
             },
-            prog_bar=False,
+            prog_bar=True,
             on_step=False,
             on_epoch=True,
         )
@@ -303,6 +286,7 @@ class GAN(pl.LightningModule):
     def validation_step(self, batch, batchidx):
         # Switch models to eval
         self.G_net.eval()
+        self.D_net.eval()
 
         # Split validation batch
         L = batch[:, [0], :, :]
@@ -329,7 +313,7 @@ class GAN(pl.LightningModule):
                 "loss_D_real_val": loss_D_real.item(),
                 "loss_D_val": loss_D.item(),
             },
-            prog_bar=False,
+            prog_bar=True,
             on_step=False,
             on_epoch=True,
         )
@@ -347,36 +331,33 @@ class GAN(pl.LightningModule):
                 "loss_G_L1_val": loss_G_L1.item(),
                 "loss_G_val": loss_G.item(),
             },
-            prog_bar=False,
+            prog_bar=True,
             on_step=False,
             on_epoch=True,
         )
 
         # Switch models back to train
         self.G_net.train()
+        self.D_net.train()
 
         # Save first batch for visualization
-        if batchidx == 0 and self.current_epoch >= self.skip_epochs:
+        if batchidx == 0:
             self.visualiztion_batch = batch
 
     def configure_optimizers(self):
         opt_G = optim.Adam(
             self.G_net.parameters(),
             lr=self.hparams.lr_G,
-            betas=(self.hparams.beta1_G, self.hparams.beta2_G),
+            betas=(self.hparams.beta1, self.hparams.beta2),
         )
         opt_D = optim.Adam(
             self.D_net.parameters(),
             lr=self.hparams.lr_D,
-            betas=(self.hparams.beta1_D, self.hparams.beta2_D),
+            betas=(self.hparams.beta1, self.hparams.beta2),
         )
         return [opt_G, opt_D]
 
     def on_validation_epoch_end(self):
-        # Skip image generation for the first couple epochs
-        if self.current_epoch < self.skip_epochs:
-            return
-
         images = self.visualiztion_batch
         images_cpu = np.stack(
             [lab2rgb_denormalize(img) for img in images.detach().cpu().numpy()]
@@ -384,11 +365,12 @@ class GAN(pl.LightningModule):
 
         # Switch generator to eval mode
         self.G_net.eval()
-        self.D_net.eval()
 
         # LAB, normalized, tensor
         L = images[:, [0], :, :].to(self.device)
         fake_ab = self(L)
+
+        # TODO Permute here
 
         # LAB, normalized, numpy
         fake_images_cpu_lab = torch.concat([L, fake_ab], dim=1).detach().cpu().numpy()
@@ -423,15 +405,5 @@ class GAN(pl.LightningModule):
             image_array, f"generated_images_gan_epoch_{self.current_epoch}.png"
         )
 
-        # Switch models back to train mode
+        # Switch generator back to train mode
         self.G_net.train()
-        self.D_net.train()
-
-    def on_train_epoch_end(self):
-        if self.current_epoch >= self.skip_epochs:
-            mlflow.pytorch.log_model(
-                self,
-                f"cgan_checkpoint_{self.current_epoch}",
-                signature=signature,
-                registered_model_name=self.registered_model_name,
-            )
