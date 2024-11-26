@@ -309,9 +309,9 @@ class GAN(pl.LightningModule):
         # Log losses
         self.log_dict(
             {
-                "loss_D_fake_val": loss_D_fake,
-                "loss_D_real_val": loss_D_real,
-                "loss_D_val": loss_D,
+                "loss_D_fake_val": loss_D_fake.item(),
+                "loss_D_real_val": loss_D_real.item(),
+                "loss_D_val": loss_D.item(),
             },
             prog_bar=True,
             on_step=False,
@@ -327,9 +327,9 @@ class GAN(pl.LightningModule):
         # Log losses
         self.log_dict(
             {
-                "loss_G_GAN_val": loss_G_GAN,
-                "loss_G_L1_val": loss_G_L1,
-                "loss_G_val": loss_G,
+                "loss_G_GAN_val": loss_G_GAN.item(),
+                "loss_G_L1_val": loss_G_L1.item(),
+                "loss_G_val": loss_G.item(),
             },
             prog_bar=True,
             on_step=False,
