@@ -303,7 +303,6 @@ class GAN(pl.LightningModule):
     def validation_step(self, batch, batchidx):
         # Switch models to eval
         self.G_net.eval()
-        self.D_net.eval()
 
         # Split validation batch
         L = batch[:, [0], :, :]
@@ -355,7 +354,6 @@ class GAN(pl.LightningModule):
 
         # Switch models back to train
         self.G_net.train()
-        self.D_net.train()
 
         # Save first batch for visualization
         if batchidx == 0 and self.current_epoch >= self.skip_epochs:
