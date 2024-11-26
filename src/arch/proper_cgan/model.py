@@ -16,7 +16,7 @@ from src.arch.proper_cgan.losses import GANLoss
 class Generator(pl.LightningModule):
     def __init__(
         self,
-        lr=0.004,
+        lr=0.0004,
         beta1=0.9,
         beta2=0.999,
     ):
@@ -193,8 +193,8 @@ class GAN(pl.LightningModule):
         self,
         G_net,
         registered_model_name,
-        lr_G=0.004,
-        lr_D=0.004,
+        lr_G=0.0004,
+        lr_D=0.0004,
         beta1_G=0.5,
         beta2_G=0.999,
         beta1_D=0.5,
