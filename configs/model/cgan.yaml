@@ -1,4 +1,4 @@
-arch: "CGAN"
+arch: "Conditional GAN"
 
 pretrain_epochs: 5
 epochs: 20
