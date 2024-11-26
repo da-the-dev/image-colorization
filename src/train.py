@@ -42,13 +42,6 @@ def train(cfg: DictConfig):
         pretrainer.fit(G_net, datamodule=dm)
         print("Generator pretrain completed!")
 
-        mlflow.pytorch.log_model(
-            pytorch_model=G_net,
-            artifact_path="gnet",
-            signature=signature,
-            registered_model_name="U-net Generator (ResNet backbone)",
-        )
-
         print("Started GAN training...")
         GAN_model = GAN(
             G_net,
