@@ -48,7 +48,7 @@ class Generator(pl.LightningModule):
         self.log(
             "L1 loss for GNet during pretrain",
             loss,
-            prog_bar=True,
+            prog_bar=False,
             on_epoch=True,
             on_step=False,
         )
@@ -66,7 +66,7 @@ class Generator(pl.LightningModule):
         self.log(
             "Validation L1 loss for GNet during pretrain",
             loss,
-            prog_bar=True,
+            prog_bar=False,
             on_epoch=True,
             on_step=False,
         )
@@ -261,7 +261,7 @@ class GAN(pl.LightningModule):
                 "loss_D_real": loss_D_real,
                 "loss_D": loss_D,
             },
-            prog_bar=True,
+            prog_bar=False,
             on_step=False,
             on_epoch=True,
         )
@@ -290,7 +290,7 @@ class GAN(pl.LightningModule):
                 "loss_G_L1": loss_G_L1,
                 "loss_G": loss_G,
             },
-            prog_bar=True,
+            prog_bar=False,
             on_step=False,
             on_epoch=True,
         )
@@ -330,7 +330,7 @@ class GAN(pl.LightningModule):
                 "loss_D_real_val": loss_D_real.item(),
                 "loss_D_val": loss_D.item(),
             },
-            prog_bar=True,
+            prog_bar=False,
             on_step=False,
             on_epoch=True,
         )
@@ -348,7 +348,7 @@ class GAN(pl.LightningModule):
                 "loss_G_L1_val": loss_G_L1.item(),
                 "loss_G_val": loss_G.item(),
             },
-            prog_bar=True,
+            prog_bar=False,
             on_step=False,
             on_epoch=True,
         )
