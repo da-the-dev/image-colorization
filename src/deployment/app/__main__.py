@@ -1,3 +1,4 @@
+import io
 from PIL import Image
 import requests
 import streamlit as st
@@ -22,4 +23,13 @@ if uploaded_image is not None:
         )
 
         # Display the result
-        st.write(f"Inference Result: {response.json()['class']}")
+        # st.write(f"Inference Result: {response.status_code}")
+        
+        print(response.content)
+        
+        color_image = Image.open(io.BytesIO(response.content))
+        
+        
+        
+        st.image(color_image, caption="Colored Image", use_column_width=True)
+
