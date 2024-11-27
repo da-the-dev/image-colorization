@@ -9,18 +9,24 @@ from torch.utils.data import Dataset
 from src.arch.proper_cgan.utils import rgb2lab_normalize
 
 
+def make_transforms(img_size):
+    return transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Resize((img_size, img_size), Image.BICUBIC),
+            # transforms.RandomHorizontalFlip(),
+        ]
+    )
+
+
 class GAN_Dataset(Dataset):
     def __init__(self, data_path, img_size=256):
         self.img_size = img_size
         self.parquet_dataset = pq.ParquetFile(data_path)
 
-        self.transforms = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Resize((img_size, img_size), Image.BICUBIC),
-                # transforms.RandomHorizontalFlip(),
-            ]
-        )
+        transforms = self.make_transforms(img_size)
+
+        self.transforms = transforms
 
     def __getitem__(self, idx):
         row_group_size = (
