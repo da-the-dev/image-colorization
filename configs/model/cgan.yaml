@@ -1,7 +1,4 @@
-arch: "CGAN"
+arch: "Conditional GAN"
 
-model_dir: "models/cgan"
-image_path: "images/cgan"
-
-epochs: 20
-lamda: 0.01
+pretrain_epochs: 5
+epochs: 5
